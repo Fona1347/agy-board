@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agy-board": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/dist/mcp.mjs"
+      ],
+      "env": {
+        "AGY_BOARD_PLUGIN_DATA": "${PLUGIN_DATA}"
+      }
+    }
+  }
+}

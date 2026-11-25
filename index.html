@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agy Board</title>
+    <script src="/preload.js"></script>
+  </head>
+  <body>
+    <div id="root" data-ag-no-i18n="true"></div>
+    <script>
+      (function () {
+        function showBootError(msg) {
+          var root = document.getElementById('root');
+          if (!root || root.childElementCount > 0) return;
+          root.innerHTML =
+            '<div style="padding:16px;font-family:system-ui,sans-serif;font-size:13px;color:#b91c1c;white-space:pre-wrap;word-break:break-word;">' +
+            'Agy Board failed to initialize:\n' +
+            String(msg || 'Unknown error').replace(/[<>&]/g, function (c) {
+              return c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&amp;';
+            }) +
+            '</div>';
+        }
+        window.addEventListener('error', function (e) {
+          showBootError((e && e.error && e.error.stack) || (e && e.message) || e);
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          showBootError((r && r.stack) || (r && r.message) || r);
+        });
+      })();
+    </script>
+    <script type="module" src="/src/client/main.tsx"></script>
+  </body>
+</html>

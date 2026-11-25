@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "plugin_name": "agy-board",
+  "sidecar_id": "agy-board/board",
+  "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+  "spatial_separation": {
+    "dom_injection": false,
+    "composer_footer": false,
+    "aux_pane_only": true,
+    "modifies_shortcuts": false,
+    "modifies_app_storage": false,
+    "modifies_language_server": false,
+    "duplicate_toast_notifications": false
+  },
+  "runtime_entries": [
+    "assets",
+    "dist",
+    "hooks.json",
+    "mcp_config.json",
+    "plugin.json",
+    "rules",
+    "sidecars",
+    "skills"
+  ],
+  "ignored_patterns": [
+    "__pycache__",
+    "*.log",
+    ".data",
+    ".tmp",
+    "node_modules",
+    "src",
+    "tests",
+    "coverage",
+    "*.db",
+    "*.db-wal",
+    "*.db-shm"
+  ],
+  "hook_name": "agy-board-lifecycle",
+  "mcp_server_name": "agy-board"
+}

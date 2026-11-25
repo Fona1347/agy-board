@@ -1,0 +1,15 @@
+{
+  "name": "agy-board",
+  "displayName": "Agy Board",
+  "version": "0.1.0",
+  "author": "Fona1347",
+  "homepage": "https://github.com/Fona1347/agy-board",
+  "repository": "https://github.com/Fona1347/agy-board",
+  "description": "Workspace-linked Kanban & Todo board in the Auxiliary Pane — find workspaces, dispatch or resume conversations, track subgoals, deliverables, hooks, and reminders.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Show my active and needs-you tasks across workspaces on Agy Board",
+    "Break down this feature into required subgoals on Agy Board",
+    "Create a task bound to this workspace with a freeze snapshot for handoff"
+  ]
+}

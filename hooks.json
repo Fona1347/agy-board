@@ -1,0 +1,53 @@
+{
+  "agy-board-lifecycle": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node dist/hook.mjs",
+        "timeout": 10
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|run_command|edit_file|write_file|delete_file|send_command_input|ask_question|mcp_agy-board_board_transition|mcp_agy-board_board_update|mcp_agy-board_board_archive|mcp_agy-board_board_delete|mcp_agy[-_]board_(?:agy[-_]board_)?board_(?:transition|update|archive|delete)|board_transition|board_update|board_archive|board_delete",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node dist/hook.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|edit_file|write_file|delete_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node dist/hook.mjs",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "ask_question",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node dist/hook.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node dist/hook.mjs",
+        "timeout": 10
+      }
+    ]
+  }
+}

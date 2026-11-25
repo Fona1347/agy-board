@@ -1,0 +1,316 @@
+/* Zero-Cron Scheduled Tasks UI — Host-theme & 360px Aux Pane native */
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: var(--agy-radius);
+  border: 1px solid var(--agy-border);
+  background: var(--agy-recessed-bg);
+}
+
+.sched-bar.is-unset {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+}
+
+.sched-bar.is-unset.is-editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.sched-bar-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sched-bar-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1 1 200px;
+  font-size: 12px;
+  color: var(--agy-fg-strong);
+  font-weight: 500;
+}
+
+.sched-bar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--agy-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.sched-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--agy-muted-fg);
+  flex-shrink: 0;
+}
+
+.sched-status-dot.is-on {
+  background: var(--agy-green);
+}
+
+.sched-status-dot.is-warn {
+  background: var(--agy-amber);
+}
+
+.sched-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: var(--agy-radius);
+  border: 1px solid var(--agy-border);
+  background: var(--agy-recessed-bg);
+}
+
+.sched-composer.is-embedded {
+  border: none;
+  border-top: 1px solid var(--agy-border);
+  border-radius: 0;
+  padding: 9px 0 0;
+  background: transparent;
+}
+
+.sched-section-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sched-row-label {
+  font-size: 11px;
+  color: var(--agy-muted-fg);
+  min-width: 54px;
+  flex-shrink: 0;
+}
+
+.sched-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.sched-seg-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sched-weekday-btn {
+  min-width: 28px;
+  justify-content: center;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.sched-time-input {
+  width: 96px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-num-input {
+  width: 68px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-dt-input {
+  flex: 1 1 180px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-guardrail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: var(--agy-warn-bg);
+  color: var(--agy-warn-fg);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.sched-advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  color: var(--agy-muted-fg);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.sched-advanced-toggle:hover {
+  color: var(--agy-fg);
+}
+
+.sched-advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.sched-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--agy-border);
+}
+
+.sched-footer-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sched-summary-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--agy-fg-strong);
+}
+
+.sched-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--agy-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.sched-preview-chip {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--agy-fg) 6%, transparent);
+}
+
+/* Read-only Micro Badge for Cards & List Rows */
+.sched-micro-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--agy-fg) 6%, transparent);
+  color: var(--agy-muted-fg);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sched-micro-badge.is-active {
+  color: var(--agy-primary-text);
+  background: color-mix(in srgb, var(--agy-primary) 13%, transparent);
+}
+
+.sched-micro-badge.is-warn {
+  color: var(--agy-warn-fg);
+  background: var(--agy-warn-bg);
+}
+
+.sched-micro-badge.is-paused {
+  opacity: 0.72;
+}
+
+/* Top Alert Banner for Due Reminders & Missed Schedules */
+.sched-alert-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 14px;
+  background: var(--agy-warn-bg);
+  border-bottom: 1px solid var(--agy-warn-border);
+  color: var(--agy-warn-fg);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.sched-alert-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sched-alert-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.sched-alert-item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--agy-card) 65%, transparent);
+}
+
+/* NewTaskModal quick schedule row */
+.sched-quick-modal-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+@media (max-width: 440px) {
+  .sched-advanced-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sched-alert-banner {
+    padding: 7px 10px;
+  }
+}
+
+.board-shell.is-narrow .sched-advanced-grid {
+  grid-template-columns: 1fr;
+}

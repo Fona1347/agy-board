@@ -1,0 +1,25 @@
+{
+  "command": "node",
+  "args": [
+    "server.mjs"
+  ],
+  "display_name": "Agy Board",
+  "description": "Workspace-linked Kanban & Todo board for Antigravity — filter by workspace, launch or resume conversations, track subgoals and TaskSpace deliverables.",
+  "has_web_ui": true,
+  "restart_policy": "always",
+  "ui_config": {
+    "display_name": "Agy Board",
+    "views": [
+      {
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "path": "/",
+        "title": "Agy Board"
+      },
+      {
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_SIDEBAR",
+        "path": "/?view=board",
+        "title": "Agy Board"
+      }
+    ]
+  }
+}

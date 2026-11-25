@@ -1,0 +1,12 @@
+node_modules/
+.data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+coverage/
+.vite/
+.tmp/
+.env
+.env.*
+promo-video/
