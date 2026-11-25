@@ -119,7 +119,7 @@ export async function runCli(
   }
 
   if (command === 'serve') {
-    const port = typeof flags.get('port') === 'string' ? Number(flags.get('port')) : 17910
+    const port = typeof flags.get('port') === 'string' ? Number(flags.get('port')) : undefined
     const handle = await startStandaloneServer({ port, paths: overrides })
     return { command: 'serve', exitCode: 0, output: `Listening on ${handle.url}`, handle }
   }

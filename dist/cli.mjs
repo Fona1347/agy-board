@@ -7084,7 +7084,7 @@ async function runCli(argv, pathOverrides) {
     };
   }
   if (command === "serve") {
-    const port = typeof flags.get("port") === "string" ? Number(flags.get("port")) : 17910;
+    const port = typeof flags.get("port") === "string" ? Number(flags.get("port")) : void 0;
     const handle = await startStandaloneServer({ port, paths: overrides });
     return { command: "serve", exitCode: 0, output: `Listening on ${handle.url}`, handle };
   }
