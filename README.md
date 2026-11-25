@@ -1,5 +1,7 @@
 # Agy Board (`agy-board`)
 
+**English** | [简体中文](README.zh-CN.md)
+
 Workspace-linked Kanban, Focus & Todo board plugin for **Antigravity** (`SIDECAR_UI_ENTRYPOINT_AUX_PANE` and `SIDECAR_UI_ENTRYPOINT_SIDEBAR`), built with TypeScript, React, `@dnd-kit`, and Node 22+ native `node:sqlite`.
 
 [![Agy Board Demo Preview](https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-preview.gif)](https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-promo-45s.mp4)
@@ -18,53 +20,44 @@ Requires **Node.js 22.13+** (for built-in `node:sqlite`).
 
 > Want to preview every UI state without touching your real tasks? Open **Filters & Settings → Demo Sandbox** inside the board for an isolated in-memory showcase.
 
+## Features
+
+- **3 Differentiated Views & 4-Tier Semantic Palette**:
+  - **Focus (`焦点`)**: Daily command center surfacing `Needs Attention`, `Active`, `Today's Focus` (urgent / pinned / due within 48h / scheduled today), and `Completed Today`, with `★` pinning, Snooze presets, and a collapsible `Quiet Pool` (`待排期与远期池`) + `Ignored` recovery box.
+  - **Kanban (`看板`)**: 4-tier asymmetric execution board (`Needs You`, `Active & On Hold`, `Todo`, `Closed` bucketed by `Today` / `Yesterday` / `Last 7 Days` / `Older`) with `@dnd-kit` drag-and-drop, concurrency indicator, and drag-to-dispatch inline confirmation.
+  - **List (`列表`)**: Master-Detail triage ledger supporting 4-axis grouping (`Workspace`, `Status`, `Schedule`, `Tag`), multi-criterion sorting, 1-click `Ready ↔ Backlog` toggle, `Shift+Click` multi-select Batch Bar, and keyboard arrow stepping.
+- **Dual-Tab Detail Drawer (`My View` & `Agent Control`)**:
+  - Separates human notes, subgoals, priority, DDL, and reminder/schedule controls from agent execution prompts, session linking, worktree diffs, write gate, and run history.
+  - Host-synced 3-way theme (`Follow Agy` / `Light` / `Dark`) and EN/中文 i18n toggle.
+- **AI Draft Approval Gate & Cross-Session Context Capsule**:
+  - Tasks staged by AI via MCP `board_create` land in `todo/draft` with origin provenance (`originConversationId`, `discoveredFromTaskId`, `originSummary`) and require explicit human approval before dispatch.
+  - Weighted conversation links (`summary` + `★ Include in handoff`) assemble a clean cross-session Context Capsule into newly spawned agent sessions instead of blindly reusing bloated threads.
+- **Zero-Cron Scheduling, Reminders & `SidecarOwner`**:
+  - Supports one-time reminders (`reminderAt`), `once`, zone-aware 5-field `cron` (DST-safe), and `after_completion` recurring rules, plus `remind`-only mode, `Accept Round` cycle completion, sleep misfire catch-up banner (`Run Now` / `Skip`), and `SidecarOwner` multi-window single-leader locking.
+- **Workspace Linking, Antigravity 2.35+ Bridge & Git Worktree Isolation**:
+  - Multi-folder workspace discovery (`~/.gemini/config/projects/*.json`) synced live via `window.sidecar.getWorkspaceUris()` / `onWorkspaceChange()`.
+  - Connects to Antigravity 2.35+ `product.v1.ConversationService` over Connect HTTP+JSON (with HTTPS TLS fallback and `agentapi` CLI fallback) to launch, resume, rework, jump, or `Split ↗` sessions.
+  - Opt-in Git worktree isolation under `.worktrees/agy-board-<taskId>` with diff inspection and cleanup.
+- **15 MCP Tools, Inline MCP App Card & Dual Write Gate Hooks**:
+  - **15 MCP Tools** (`mcp_config.json` → `dist/mcp.mjs`): `board_list`, `board_get`, `board_card`, `board_workspaces`, `board_create`, `board_update`, `board_transition`, `board_plan_breakdown`, `plan_to_board`, `board_subgoal_update`, `board_comment_add`, `board_ref_add`, `board_dispatch`, `board_schedule`, `next_ready_task`. (Intentionally omits `confirm_permission`.)
+  - **Inline MCP App Resource**: `ui://agy-board/card.html` (`text/html;profile=mcp-app`) linked on `board_list`, `board_get`, and `board_card`.
+  - **Lifecycle Hooks** (`hooks.json` → `dist/hook.mjs`): `SessionStart` context injection, `PreToolUse` Dual Write Gate & `ask_question` pause, `PostToolUse` deliverable capture & resume, and `Stop` transcript summary settlement.
+  - **Freeze & Handover Security**: Redacts secrets (`sk-`, `Bearer`, `ghp_`, `gho_`, `github_pat_`, `glpat-`, `xox*`, `AKIA`, `AIza`, PEM private keys) and blocks direct file/shell mutations to `board.db*`, `taskspace/*.md`, and `handover.references`.
+- **In-Memory Demo Sandbox**:
+  - Preview every state (Draft, Review, Permission Pending, Active, Reminder Due, Missed Schedule) inside an isolated in-memory sandbox without touching your real SQLite database.
+
 ## Architecture Overview
 
 - **Core Domain (`src/core/`)**: Pure zero-dependency TypeScript domain logic (`types`, `freeze`, `handover`, `subgoals`, `schedule`, `session-reuse`, `workspace`).
 - **Authoritative Host (`src/host/`)**:
-  - `db.ts`: `node:sqlite` WAL database with schema migrations (including composite `(task_id, id)` `task_subgoals`, `task_comments`, `task_refs`, `task_conversations`, `task_executions`, `task_events`, `task_user_marks`, and worktree columns) + `dispatch.lock.<executionId>` in-flight protection + optional `recoverOrphans` startup recovery.
-  - `board-service.ts`: Unified mutation, validation, TaskSpace Markdown projection, dual Write Gate, dispatch, and scheduler engine shared by HTTP/Sidecar, MCP, Hooks, and CLI.
-  - `workspaces.ts`: Read-only discovery of Antigravity projects (`~/.gemini/config/projects/*.json`, including multi-folder workspaces) and `conversation_summaries.db` (conditional `not_fully_idle` support + full conversation lookup by ID + subagent lineage resolution), merged with custom editable workspaces.
-  - `agent-bridge.ts`: Antigravity Language Server `ConversationService` (`CreateConversation`, `GetConversation`, `ListConversations`, `UpdateConversation`) via Connect HTTP+JSON (with HTTP 400/426 -> HTTPS TLS fallback and verified daemon discovery), `agentapi` CLI fallback (stripping caller `ANTIGRAVITY_CONVERSATION_ID`/`ANTIGRAVITY_PROJECT_ID` on unbound launches), and loopback CDP navigation (`/c/<id>`).
-  - `worktree.ts`: Opt-in Git worktree isolation under `.worktrees/agy-board-<taskId>` (`agy-board/<taskId>`).
-  - `scheduler.ts`: `SidecarOwner` single-leader lockfile (`<boardDir>/scheduler.owner.json`) + `BoardScheduler` periodic tick.
-  - `refs-guard.ts`: Strict allowlisted TaskSpace file preview with symlink-escape and device-path guards.
-  - `launch-admission.ts`: Round-robin fair concurrency cap (`LaunchAdmissionQueue`).
-- **Entrypoints (`src/entry/`, bundled into `dist/*` & `sidecars/board/server.mjs`)**:
-  - `sidecar.ts` / `router.ts` / `server-core.ts`: Dual-mode `sidecar_sdk` `SidecarApp` (with async `/_sidecar/*` overrides after `app.run()`) and standalone loopback HTTP+SSE server.
-  - `mcp.ts`: Stdio MCP server (15 tools + `ui://agy-board/card.html` inline MCP App card resource).
-  - `hook.ts`: Antigravity lifecycle hook handler (`SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`), exiting early with `{"decision":"allow"}` without creating a phantom `board.db` when the board has not been initialized.
-  - `cli.ts`: Standalone CLI (`serve`, `doctor`, `workspaces`, `list`, `create`, `dispatch`).
-
-## Features
-
-- **4-Tier Asymmetric Kanban & 3 Views (Hong / DSH Minimalist UI)**:
-  - **Tiers**: `Needs You` (`review`, `blocked`, `needs_input`, `permission_pending`, `reminder_due`) · `Active & On Hold` (asymmetric split lane; `On Hold` is system-managed and rejects manual drops) · `Todo` (`ready`, `backlog`) · `Closed` (`done`, `cancelled`, collapsible with `Today` / `Yesterday` / `Last 7 Days` / `Older` time buckets).
-  - **Views**:
-    - `Focus` (`焦点`, first-time default view): sorts non-closed tasks earliest-DDL-first (`overdue` → `today` → `tomorrow` → `upcoming` → `undated`) along a left DDL timeline rail, with an `已忽略 N 件` recovery box at the bottom.
-    - `Kanban` (`看板`): `@dnd-kit` drag & drop across lanes (`On Hold` drop-protected) with restrained zero-button normal cards, Inbox action buttons only on `Needs You`, and semantic full-card tints (`tint-ok` green for `review`, `tint-warn` amber for `needs_input`/`permission_pending`/`reminder_due`, `tint-active` blue for `active`, `tint-danger` red for `on_hold`/`blocked`, neutral `#2f2f2d`/`#FFFFFF` for `todo`).
-    - `List` (`列表`): Master-Detail split view supporting `Group by Status` / `Group by Workspace` (collapsing to responsive drill-down below `740px`).
-  - **Progressive Disclosure & Host-Synced Dual Palette**: First-class `dueAt` DDL input in `New Task` with `More options` (`更多设置`) and `Advanced settings` (`高级设置`) folded by default; persistent `task_comments`, `MarkdownText`, `TaskHandover` inspection, 3-way `[跟随 agy | 浅色 | 深色]` host-following theme (`#262624` / `#2f2f2d` / `#CF8F50` Dark & `#F9F9F7` / `#FFFFFF` / `#B45309` Light), and EN/中文 i18n toggle.
-- **Workspace Linking & Cross-Workspace Dispatch / Jump / Split / Rework / Relay**:
-  - Multi-folder workspace dropdown listing all `folderPaths`, preserving exact subfolder paths, and filtering strictly by selected path.
-  - `[This Workspace]` filter syncs live with Antigravity via `window.sidecar.getWorkspaceUris()` / `onWorkspaceChange()`.
-  - Launch a `New Session` / `Relay / New`, `Resume` an idle conversation, send inline `Rework` instructions into an existing conversation, `Jump` / `Jump & Reply` (`toggleConversation` in Aux Pane / CDP `/c/<id>` standalone), open `Split ↗` (`{ split: 'right' }`), or toggle `Auto-open session` on dispatch.
-- **Subgoals, TaskSpace Read-Only Projection & Dual Write Gate**:
-  - Lightweight subgoals with composite `(task_id, id)` primary key, `required` vs `optional` flags, dependency cycle validation, drag reordering (`POST /api/tasks/subgoals/reorder`), and per-subgoal conversation dispatch.
-  - Completing or deleting subgoals so all `required` subgoals finish automatically settles open executions and rolls an `active` task into `needs_you` (`review`); closing is gated unless `force=true`.
-  - Read-only TaskSpace Markdown projection (`<boardDir>/taskspace/<taskId>.md`) for `active` / `needs_you` tasks, plus allowlisted `task_refs` preview (`RefPreviewModal`) with properly percent-encoded `file:///` URIs for `fileView` / `addArtifactComment` (guarded off for URL/command previews).
-  - **Dual Write Gate**: Enforced in **both** `PreToolUse` (`dist/hook.mjs`, including `mcp_agy-board_board_*` tool matchers and subagent lineage fallback) **and** inside MCP handlers (`dist/mcp.mjs`). Locked tasks block workspace file/shell mutations as well as closing, archiving, deleting, or unlocking `writeGate` from a locked conversation; even when `writeGate === 'unlocked'`, direct writes and shell mutations (`rm`/`rmdir`/redirects) targeting `board.db*`, `<boardDir>/taskspace/*.md`, and `handover.references` are always blocked.
-  - **Freeze & Handover Security**: `FreezeSnapshot` (`<<<FREEZE ... >>>FREEZE`) redacts credentials (`sk-`, `Bearer`, `ghp_`, `gho_`, `github_pat_`, `glpat-`, `xox*`, `AKIA`, `AIza`, PEM private keys), rejects `/command` lines, enforces an 8 KiB per-field UTF-8 cap, and unlocks pre-launch errors automatically (`isTaskContentFrozen`). `TaskHandover` + human-only UI confirmation gate re-arms on any permission or handover change.
-- **Git Worktree Isolation**:
-  - Enable `useWorktree` per task or dispatch to isolate work inside `<repo>/.worktrees/agy-board-<taskId>` on branch `agy-board/<taskId>`, inspect git status & diffs (`GET /api/tasks/worktree/diff`), and clean up (`POST /api/tasks/worktree/cleanup`).
-- **MCP Tools, Inline MCP App Card & Hooks**:
-  - **15 MCP Tools** (`mcp_config.json` -> `dist/mcp.mjs`):
-    `board_list`, `board_get`, `board_card`, `board_workspaces`, `board_create`, `board_update`, `board_transition`, `board_plan_breakdown`, `plan_to_board`, `board_subgoal_update`, `board_comment_add`, `board_ref_add`, `board_dispatch`, `board_schedule`, `next_ready_task`. (Intentionally omits `confirm_permission`.)
-  - **Inline MCP App Card Resource**: `ui://agy-board/card.html` (`text/html;profile=mcp-app`), linked via `_meta.ui.resourceUri` on `board_list`, `board_get`, and `board_card`.
-  - **Lifecycle Hooks** (`hooks.json` -> `dist/hook.mjs`): `SessionStart` context injection, `PreToolUse` Dual Write Gate & `ask_question` pause (`needs_you/needs_input`), `PostToolUse` deliverable auto-capture & `ask_question` resume (non-error only), and `Stop` transcript summary (`PLANNER_RESPONSE` / `CORTEX_STEP_TYPE_PLANNER_RESPONSE`) & strict `openExec.conversationId === directConv` execution settlement.
-- **Cron, Reminders & `SidecarOwner`**:
-  - One-time reminders (`reminderAt`), `once` schedules, and zone-aware 5-field Vixie cron rules (`Intl.DateTimeFormat`, DST-safe) with launch-failure budget refunding (`cron` and `once` within the 5-minute grace window).
-  - Multi-window single-leader locking via `SidecarOwner` (`<boardDir>/scheduler.owner.json`) prevents duplicate triggers across Antigravity windows.
+  - `db.ts`: `node:sqlite` WAL database with schema migrations, `dispatch.lock.<executionId>` in-flight protection, and optional orphan recovery.
+  - `board-service.ts`: Unified mutation, validation, TaskSpace Markdown projection, Dual Write Gate, dispatch, and scheduler engine shared by Sidecar/HTTP, MCP, Hooks, and CLI.
+  - `workspaces.ts`: Read-only discovery of Antigravity projects and `conversation_summaries.db`, merged with custom editable workspaces.
+  - `agent-bridge.ts`: Antigravity `product.v1.ConversationService` Connect HTTP+JSON client, `agentapi` CLI fallback, and loopback CDP navigation.
+  - `worktree.ts`, `scheduler.ts`, `refs-guard.ts`, `launch-admission.ts`: Git worktree lifecycle, single-leader scheduler, allowlisted TaskSpace file preview, and fair concurrency queue.
+- **Entrypoints (`src/entry/`, bundled into `dist/*` & `sidecars/board/`)**:
+  - `sidecar.ts` / `router.ts` / `server-core.ts`: Dual-mode `sidecar_sdk` `SidecarApp` (serving a self-contained single-file inline HTML UI via `app.page('/')` with async `/_sidecar/*` overrides) and standalone loopback HTTP+SSE server.
+  - `mcp.ts`, `hook.ts`, `cli.ts`: Compiled zero-dependency Node 22+ bundles.
 
 ## Repository Layout
 
@@ -80,7 +73,7 @@ agy-board/
 ├── sidecars/board/
 │   ├── sidecar.json            # Aux Pane & Sidebar entrypoints
 │   ├── server.mjs              # Compiled Sidecar + standalone loopback server
-│   └── public/                 # Compiled React + @dnd-kit frontend
+│   └── public/index.html       # Self-contained single-file React + @dnd-kit UI bundle
 ├── dist/
 │   ├── mcp.mjs                 # Compiled MCP stdio server (15 tools + MCP App card)
 │   ├── hook.mjs                # Compiled Antigravity hook entrypoint
@@ -89,7 +82,7 @@ agy-board/
 │   ├── core/                   # Pure domain logic
 │   ├── host/                   # node:sqlite DB, workspaces, agent bridge, worktree, refs guard, scheduler
 │   ├── entry/                  # Sidecar, HTTP router, MCP, Hook, CLI
-│   └── client/                 # React + @dnd-kit UI
+│   └── client/                 # React + @dnd-kit UI & Demo Sandbox
 └── tests/                      # Vitest unit, host integration, MCP/Hook E2E, HTTP/CLI/Sidecar, and React UI tests
 ```
 
@@ -114,8 +107,9 @@ Requires **Node.js 22.13+** (tested on Node 24 with native `node:sqlite`).
 
 ```bash
 npm install
-npm run build   # Typechecks (tsc --noEmit), builds React UI, and bundles runtime JS
-npm test        # Runs full Vitest suite (npx vitest run)
+npm run build   # Typechecks (tsc --noEmit), builds single-file React UI, and bundles runtime JS
+npm test        # Runs full Vitest suite (vitest run)
+npm run check   # Runs build + test
 ```
 
 ### Standalone Preview (Without Antigravity Deployment)
