@@ -1,5 +1,6 @@
 import type {
   BatchTaskAction,
+  BoardFocusRequest,
   BoardSnapshot,
   ConversationRole,
   ScheduleAction,
@@ -180,7 +181,12 @@ const realBoardApi = {
     const qs = params.toString()
     return requestJson<BoardSnapshot>(`/api/snapshot${qs ? `?${qs}` : ''}`)
   },
-  getRevision(): Promise<{ revision: number; serverTime: number; hostTheme?: 'dark' | 'light' | 'system' }> {
+  getRevision(): Promise<{
+    revision: number
+    serverTime: number
+    hostTheme?: 'dark' | 'light' | 'system'
+    focus?: BoardFocusRequest | null
+  }> {
     return requestJson('/api/revision')
   },
   getTaskDetail(taskId: string): Promise<TaskDetailResponse> {

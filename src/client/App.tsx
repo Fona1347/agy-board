@@ -29,7 +29,14 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import type { BoardSnapshot, DiscoveredConversation, TaskPhase, TaskRecord, WorkspaceRecord } from '../core/types.ts'
+import type {
+  BoardFocusRequest,
+  BoardSnapshot,
+  DiscoveredConversation,
+  TaskPhase,
+  TaskRecord,
+  WorkspaceRecord,
+} from '../core/types.ts'
 import { fileUriToPath, isPathEqualOrInside, matchWorkspaceForPath, normalizeFsPath, pathComparisonKey } from '../core/workspace.ts'
 import { boardApi, getSidecar, setBoardApiSandbox, type ConversationGovernanceConfig } from './api.ts'
 import { createDemoSandboxController, type DemoSandboxController } from './demoSandbox.ts'
@@ -164,11 +171,43 @@ const DEFAULT_GOVERNANCE_CONFIG: ConversationGovernanceConfig = {
   autoArchiveOnFinish: true,
 }
 
+const FOCUS_REQUEST_TTL_MS = 30_000
+const FOCUS_NONCE_STORAGE_KEY = 'agy-board:lastHandledFocusNonce'
+
+function readInitialUrlTaskId(): string | null {
+  try {
+    if (typeof window === 'undefined' || !window.location?.search) return null
+    const id = new URLSearchParams(window.location.search).get('taskId')?.trim()
+    return id || null
+  } catch {
+    return null
+  }
+}
+
+function readLastHandledFocusNonce(): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(FOCUS_NONCE_STORAGE_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+function saveLastHandledFocusNonce(nonce: string): void {
+  try {
+    globalThis.sessionStorage?.setItem(FOCUS_NONCE_STORAGE_KEY, nonce)
+  } catch {
+    // ignore
+  }
+}
+
 export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   const shellRef = useRef<HTMLDivElement>(null)
   const revisionRef = useRef<number>(initialSnapshot?.revision ?? 0)
+  const snapshotRef = useRef<BoardSnapshot | null>(initialSnapshot ?? null)
+  const lastHandledFocusNonceRef = useRef<string | null>(readLastHandledFocusNonce())
 
   const [snapshot, setSnapshot] = useState<BoardSnapshot | null>(initialSnapshot ?? null)
+  const [pendingFocusTaskId, setPendingFocusTaskId] = useState<string | null>(readInitialUrlTaskId)
   const [containerWidth, setContainerWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1024,
   )
@@ -238,10 +277,22 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   }, [toast])
 
   useEffect(() => {
+    snapshotRef.current = snapshot
     if (snapshot?.revision !== undefined) {
       revisionRef.current = snapshot.revision
     }
-  }, [snapshot?.revision])
+  }, [snapshot])
+
+  useEffect(() => {
+    if (!pendingFocusTaskId || !snapshot) return
+    const target = snapshot.tasks.find((t) => t.id === pendingFocusTaskId)
+    if (!target) return
+    if (target.archivedAt !== undefined) {
+      setShowArchived(true)
+    }
+    setSelectedTaskId(target.id)
+    setPendingFocusTaskId(null)
+  }, [pendingFocusTaskId, snapshot])
 
   useEffect(() => {
     if (!showFilterPopover) return
@@ -410,22 +461,53 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   useEffect(() => {
     if (initialSnapshot || demoMode) return
     const sidecar = getSidecar()
+    const applyFocusSignal = (focus: BoardFocusRequest | null | undefined, serverTime?: number) => {
+      if (!focus?.taskId || !focus.nonce) return
+      if (focus.nonce === lastHandledFocusNonceRef.current) return
+      const nowRef = typeof serverTime === 'number' && Number.isFinite(serverTime) ? serverTime : Date.now()
+      lastHandledFocusNonceRef.current = focus.nonce
+      saveLastHandledFocusNonce(focus.nonce)
+      if (nowRef - focus.ts > FOCUS_REQUEST_TTL_MS) return
+      setPendingFocusTaskId(focus.taskId)
+      const currentTasks = snapshotRef.current?.tasks ?? []
+      const existing = currentTasks.find((t) => t.id === focus.taskId)
+      if (existing) {
+        if (existing.archivedAt !== undefined) setShowArchived(true)
+        setSelectedTaskId(existing.id)
+        setPendingFocusTaskId(null)
+        showToast(locale === 'zh' ? `已定位到任务：${existing.title}` : `Focused task: ${existing.title}`)
+      } else {
+        void fetchSnapshot()
+      }
+    }
     const checkRevisionAndHostTheme = () => {
       void boardApi
         .getRevision()
-        .then(({ revision, hostTheme }) => {
+        .then(({ revision, serverTime, hostTheme, focus }) => {
           if (hostTheme) setPolledHostTheme(hostTheme)
           if (revision !== revisionRef.current) {
             revisionRef.current = revision
             void fetchSnapshot()
           }
+          if (focus) {
+            applyFocusSignal(focus, serverTime)
+          }
         })
         .catch(() => {})
     }
+    checkRevisionAndHostTheme()
     if (!sidecar && typeof EventSource !== 'undefined') {
       const es = new EventSource('/api/events')
       es.addEventListener('revision', () => {
         void fetchSnapshot()
+      })
+      es.addEventListener('focus', (ev) => {
+        try {
+          const parsed = JSON.parse((ev as MessageEvent).data) as BoardFocusRequest
+          applyFocusSignal(parsed)
+        } catch {
+          // ignore malformed focus event
+        }
       })
       const themePoll = setInterval(checkRevisionAndHostTheme, 2000)
       const onVisible = () => {
@@ -452,7 +534,7 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
     }
     const poll = setInterval(checkRevisionAndHostTheme, 1500)
     return () => clearInterval(poll)
-  }, [fetchSnapshot, initialSnapshot, demoMode])
+  }, [fetchSnapshot, initialSnapshot, demoMode, locale, showToast])
 
   const activeHostMode = polledHostTheme ?? snapshot?.hostTheme ?? null
   const pinnedHostTheme =

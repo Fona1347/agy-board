@@ -31,17 +31,24 @@ import {
   type HostPathOverrides,
 } from '../host/index.ts'
 import { installEpipeGuard, releasePluginCwdLock } from './server-core.ts'
+import { renderMcpAppCardHtml } from '../mcp-app/render-card.ts'
 
+export { renderMcpAppCardHtml }
 export const MCP_APP_CARD_URI = 'ui://agy-board/card.html'
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app'
 
-function textResult(data: Record<string, unknown>, includeStructured = false): {
+function textResult(
+  data: Record<string, unknown>,
+  structured?: boolean | Record<string, unknown>,
+): {
   content: Array<{ type: 'text'; text: string }>
   structuredContent?: Record<string, unknown>
 } {
+  const structuredContent =
+    structured === true ? data : structured && typeof structured === 'object' ? structured : undefined
   return {
     content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
-    ...(includeStructured ? { structuredContent: data } : {}),
+    ...(structuredContent ? { structuredContent } : {}),
   }
 }
 
@@ -87,276 +94,6 @@ function summarizeTask(task: TaskRecord): Record<string, unknown> {
     reminderAt: task.reminderAt,
     updatedAt: task.updatedAt,
   }
-}
-
-export function renderMcpAppCardHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Agy Board Status Card</title>
-<style>
-  :root {
-    --bg: var(--color-background-primary, #1f2430);
-    --bg2: var(--color-background-secondary, #272d3d);
-    --fg: var(--color-text-primary, #eceef2);
-    --fg2: var(--color-text-secondary, #9aa4b2);
-    --border: var(--color-border-primary, rgba(255,255,255,0.12));
-    --accent: #e59846;
-    --green: #22c55e;
-    --blue: #3b82f6;
-    --amber: #f59e0b;
-    --red: #ef4444;
-    --font: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-  }
-  :root[data-theme="light"] {
-    --bg: var(--color-background-primary, #f9f9f7);
-    --bg2: var(--color-background-secondary, #ffffff);
-    --fg: var(--color-text-primary, #1f2328);
-    --fg2: var(--color-text-secondary, #59636e);
-    --border: var(--color-border-primary, rgba(31,35,40,0.14));
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    padding: 10px;
-    background: var(--bg);
-    color: var(--fg);
-    font-family: var(--font);
-    font-size: 13px;
-    line-height: 1.45;
-  }
-  .card {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .between { justify-content: space-between; }
-  .title { font-size: 14px; font-weight: 600; margin: 0; }
-  .muted { color: var(--fg2); font-size: 12px; }
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    border: 1px solid var(--border);
-    background: rgba(255,255,255,0.04);
-  }
-  .pill-needs_you { border-color: rgba(245,158,11,0.5); color: var(--amber); }
-  .pill-active { border-color: rgba(59,130,246,0.5); color: var(--blue); }
-  .pill-closed { border-color: rgba(34,197,94,0.5); color: var(--green); }
-  .pill-locked { border-color: rgba(239,68,68,0.5); color: var(--red); }
-  .section { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
-  .bar-wrap { height: 6px; border-radius: 4px; background: rgba(128,128,128,0.2); overflow: hidden; margin-top: 6px; }
-  .bar-fill { height: 100%; background: var(--green); transition: width 0.2s ease; }
-  ul { margin: 6px 0 0; padding-left: 16px; }
-  li { margin: 2px 0; }
-  .list-item { padding: 8px 0; border-top: 1px solid var(--border); }
-  .list-item:first-child { border-top: 0; padding-top: 0; }
-</style>
-</head>
-<body>
-  <div id="app" class="card"><div class="muted">Loading Agy Board status...</div></div>
-<script>
-(function () {
-  const root = document.getElementById('app');
-  let reqSeq = 1;
-
-  function applyTheme(ctx) {
-    if (!ctx) return;
-    if (ctx.theme === 'light' || ctx.theme === 'dark') {
-      document.documentElement.dataset.theme = ctx.theme;
-    }
-    const vars = ctx.styles && ctx.styles.variables;
-    if (vars && typeof vars === 'object') {
-      for (const [k, v] of Object.entries(vars)) {
-        if (typeof v === 'string') document.documentElement.style.setProperty(k, v);
-      }
-    }
-  }
-
-  function notifySize() {
-    try {
-      window.parent.postMessage({
-        jsonrpc: '2.0',
-        method: 'ui/notifications/size-changed',
-        params: { width: document.documentElement.scrollWidth, height: document.body.scrollHeight + 4 }
-      }, '*');
-    } catch (_) {}
-  }
-
-  function el(tag, cls, text) {
-    const node = document.createElement(tag);
-    if (cls) node.className = cls;
-    if (text !== undefined && text !== null) node.textContent = String(text);
-    return node;
-  }
-
-  function renderSingleTask(task) {
-    root.innerHTML = '';
-    const top = el('div', 'row between');
-    top.appendChild(el('h2', 'title', task.title || '(Untitled task)'));
-    const badges = el('div', 'row');
-    badges.appendChild(el('span', 'pill pill-' + (task.phase || 'todo'), (task.phase || 'todo') + ' / ' + (task.subPhase || 'ready')));
-    badges.appendChild(el('span', 'pill', 'priority: ' + (task.priority || 'normal')));
-    if (task.writeGate === 'locked') badges.appendChild(el('span', 'pill pill-locked', 'WRITE GATE LOCKED'));
-    top.appendChild(badges);
-    root.appendChild(top);
-
-    const metaParts = [];
-    if (task.workspaceLabel || task.workspacePath) metaParts.push(task.workspaceLabel || task.workspacePath);
-    if (task.worktreeBranch) metaParts.push('worktree: ' + task.worktreeBranch);
-    if (task.dueAt) metaParts.push('due: ' + new Date(task.dueAt).toLocaleString());
-    if (metaParts.length) root.appendChild(el('div', 'muted', metaParts.join(' · ')));
-
-    if (task.blockedReason) {
-      const s = el('div', 'section');
-      s.appendChild(el('div', 'muted', 'Status Note'));
-      s.appendChild(el('div', '', task.blockedReason));
-      root.appendChild(s);
-    }
-    if (task.nextAction) {
-      const s = el('div', 'section');
-      s.appendChild(el('div', 'muted', 'Next Action'));
-      s.appendChild(el('div', '', task.nextAction));
-      root.appendChild(s);
-    }
-    const rollup = task.subgoalRollup;
-    if (rollup && rollup.total > 0) {
-      const s = el('div', 'section');
-      s.appendChild(el('div', 'row between', ''));
-      s.firstChild.appendChild(el('span', 'muted', 'Subgoals (' + rollup.done + '/' + rollup.total + ')'));
-      s.firstChild.appendChild(el('span', 'muted', 'Required: ' + rollup.requiredDone + '/' + rollup.requiredTotal));
-      const bw = el('div', 'bar-wrap');
-      const bf = el('div', 'bar-fill');
-      bf.style.width = Math.round((rollup.done / Math.max(1, rollup.total)) * 100) + '%';
-      bw.appendChild(bf);
-      s.appendChild(bw);
-      if (Array.isArray(task.subgoals) && task.subgoals.length > 0) {
-        const ul = el('ul');
-        for (const sg of task.subgoals.slice(0, 8)) {
-          const mark = sg.status === 'done' ? '[x]' : sg.status === 'in_progress' ? '[~]' : sg.status === 'skipped' ? '[-]' : '[ ]';
-          ul.appendChild(el('li', '', mark + ' ' + sg.title + (sg.required ? ' *' : '')));
-        }
-        s.appendChild(ul);
-      }
-      root.appendChild(s);
-    }
-    if (task.freeze) {
-      const s = el('div', 'section');
-      s.appendChild(el('div', 'muted', 'Freeze Snapshot'));
-      s.appendChild(el('div', '', 'Goal: ' + task.freeze.goal));
-      s.appendChild(el('div', '', 'Next: ' + task.freeze.next));
-      root.appendChild(s);
-    }
-    notifySize();
-  }
-
-  function renderTaskList(data) {
-    root.innerHTML = '';
-    const hdr = el('div', 'row between');
-    hdr.appendChild(el('h2', 'title', 'Agy Board (' + (data.total ?? data.tasks.length) + ' tasks)'));
-    if (data.counts) {
-      hdr.appendChild(el('span', 'muted',
-        'needs_you: ' + data.counts.needs_you +
-        ' · active: ' + data.counts.active +
-        ' · todo: ' + data.counts.todo +
-        ' · closed: ' + data.counts.closed
-      ));
-    }
-    root.appendChild(hdr);
-    const listWrap = el('div', 'section');
-    if (!data.tasks || data.tasks.length === 0) {
-      listWrap.appendChild(el('div', 'muted', 'No matching tasks.'));
-    } else {
-      for (const t of data.tasks.slice(0, 12)) {
-        const item = el('div', 'list-item');
-        const row = el('div', 'row between');
-        row.appendChild(el('strong', '', t.title));
-        const pills = el('div', 'row');
-        pills.appendChild(el('span', 'pill pill-' + (t.phase || 'todo'), t.phase));
-        if (t.writeGate === 'locked') pills.appendChild(el('span', 'pill pill-locked', 'locked'));
-        row.appendChild(pills);
-        item.appendChild(row);
-        const sub = [];
-        if (t.workspaceLabel) sub.push(t.workspaceLabel);
-        if (t.subgoalRollup && t.subgoalRollup.total > 0) sub.push('subgoals ' + t.subgoalRollup.done + '/' + t.subgoalRollup.total);
-        if (sub.length) item.appendChild(el('div', 'muted', sub.join(' · ')));
-        listWrap.appendChild(item);
-      }
-    }
-    root.appendChild(listWrap);
-    notifySize();
-  }
-
-  function handlePayload(payload) {
-    if (!payload) return;
-    if (payload.task) { renderSingleTask(payload.task); return; }
-    if (Array.isArray(payload.tasks)) { renderTaskList(payload); return; }
-  }
-
-  window.addEventListener('message', (ev) => {
-    const msg = ev.data;
-    if (!msg || typeof msg !== 'object') return;
-    if (msg.method === 'ping') {
-      if (msg.id !== undefined && msg.id !== null) {
-        window.parent.postMessage({ jsonrpc: '2.0', id: msg.id, result: {} }, '*');
-      }
-      return;
-    }
-    if (msg.id === 1 && msg.result) {
-      applyTheme(msg.result.hostContext);
-      window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
-      notifySize();
-      return;
-    }
-    if (msg.method === 'ui/notifications/host-context-changed') {
-      applyTheme(msg.params);
-      return;
-    }
-    if (msg.method === 'ui/notifications/tool-input' && msg.params) {
-      root.innerHTML = '';
-      root.appendChild(el('div', 'muted', 'Loading Agy Board data...'));
-      notifySize();
-      return;
-    }
-    if (msg.method === 'ui/notifications/tool-cancelled') {
-      root.innerHTML = '';
-      root.appendChild(el('div', 'muted', 'Tool call cancelled.'));
-      notifySize();
-      return;
-    }
-    if (msg.method === 'ui/notifications/tool-result' && msg.params) {
-      let data = msg.params.structuredContent;
-      if (!data && Array.isArray(msg.params.content)) {
-        const firstText = msg.params.content.find((c) => c && c.type === 'text' && typeof c.text === 'string');
-        if (firstText) {
-          try { data = JSON.parse(firstText.text); } catch (_) {}
-        }
-      }
-      handlePayload(data);
-    }
-  });
-
-  window.parent.postMessage({
-    jsonrpc: '2.0',
-    id: reqSeq++,
-    method: 'ui/initialize',
-    params: {
-      appInfo: { name: 'agy-board-card', version: '0.1.0' },
-      appCapabilities: {},
-      protocolVersion: '2026-01-26'
-    }
-  }, '*');
-})();
-</script>
-</body>
-</html>`
 }
 
 function getLockedTaskForCallerConversation(service: BoardService, targetTaskId?: string): TaskRecord | undefined {
@@ -564,19 +301,31 @@ export function createBoardMcpServer(service: BoardService): McpServer {
     'board_card',
     {
       title: 'Agy Board Status Card',
-      description: 'Render an inline Agy Board status card for a specific taskId or current active/needs_you tasks.',
+      description:
+        'Render an inline Agy Board status card for a specific taskId or current active/needs_you tasks. Set focusInBoard=true with taskId to request the right-hand Agy Board sidebar to focus and open that task drawer.',
       inputSchema: {
         taskId: z.string().optional(),
         workspacePath: z.string().optional(),
+        focusInBoard: z.boolean().optional(),
       },
       _meta: { ui: { resourceUri: MCP_APP_CARD_URI } },
     },
-    async ({ taskId, workspacePath }) => {
+    async ({ taskId, workspacePath, focusInBoard }) => {
       try {
         if (taskId) {
           const task = service.getTask(taskId)
           if (!task) return errResult(new Error(`No task with id '${taskId}'.`))
-          return textResult({ ok: true, task }, true)
+          const focusRequest = focusInBoard ? service.requestFocusTask(task.id) : undefined
+          return textResult(
+            {
+              ok: true,
+              task,
+              ...(focusRequest
+                ? { focusRequest, sidecarUri: 'sidecar://agy-board/board/' }
+                : {}),
+            },
+            true,
+          )
         }
         const snap = service.getSnapshot({ includeArchived: false })
         const filterProjId = workspacePath
@@ -634,101 +383,109 @@ export function createBoardMcpServer(service: BoardService): McpServer {
     },
   )
 
-  server.tool(
+  server.registerTool(
     'board_create',
-    'Stage a new task on Agy Board. Agent-created cards default to todo/draft and wait for human approval; pass phase/subPhase to override. Put ONLY a 1–3 sentence human-readable brief (<=150 chars) in `description`; put the full execution contract/plan in `prompt` and `subgoals`. Human-exclusive `userNotes` cannot be set via MCP. Include refs and origin provenance (discoveredFromTaskId/originSummary) so the human can review before dispatch.',
     {
-      title: z.string().min(1),
-      description: z
-        .string()
-        .describe('Concise 1–3 sentence human-readable brief summary (<=150 chars). Do NOT dump multi-paragraph plans here; put full plans in `prompt` and `subgoals`.')
-        .optional(),
-      prompt: z
-        .string()
-        .describe('Full Agent Execution Contract / implementation plan and first-round instructions (Markdown supported).')
-        .optional(),
-      phase: z.enum(TASK_PHASES).optional(),
-      subPhase: z.enum(['draft', 'ready', 'backlog']).optional(),
-      priority: z.enum(TASK_PRIORITIES).optional(),
-      createdBy: z.enum(['user', 'ai']).optional(),
-      discoveredFromTaskId: z.string().optional(),
-      originSummary: z.string().optional(),
-      originConversationId: z.string().optional(),
-      parentConversationId: z.string().optional(),
-      workspaceId: z.string().optional(),
-      workspacePath: z.string().optional(),
-      nextAction: z.string().optional(),
-      dueAt: z.number().int().optional(),
-      mode: z.string().optional(),
-      model: z.string().optional(),
-      reasoningEffort: z.string().optional(),
-      permission: z.enum(TASK_PERMISSIONS).optional(),
-      reuseSession: z.boolean().optional(),
-      useWorktree: z.boolean().optional(),
-      writeGate: z.enum(['unlocked', 'locked']).optional(),
-      reminderAt: z.number().int().optional(),
-      handover: handoverSchema.optional(),
-      tags: z
-        .array(
-          z.object({
-            name: z.string().min(1),
-            promptPrefix: z.string().optional(),
-          }),
-        )
-        .optional(),
-      freeze: z
-        .union([
-          z.string(),
-          z.object({
-            goal: z.string(),
-            progress: z.string(),
-            next: z.string(),
-          }),
-        ])
-        .optional(),
-      subgoals: z
-        .array(
-          z.object({
-            id: z.string().optional(),
-            title: z.string().min(1),
-            detail: z.string().optional(),
-            kind: z.enum(['acceptance', 'implementation', 'review', 'custom']).optional(),
-            required: z.boolean().optional(),
-            dependencies: z.array(z.string()).optional(),
-          }),
-        )
-        .optional(),
-      refs: z
-        .array(
-          z.object({
-            kind: z.enum(['file', 'url', 'artifact', 'command', 'doc']),
-            target: z.string().min(1),
-            label: z.string().optional(),
-          }),
-        )
-        .optional(),
-      schedule: z
-        .object({
-          enabled: z.boolean(),
-          mode: z.enum(['cron', 'once', 'after_completion']).optional(),
-          cron: z.string().optional(),
-          at: z.number().int().optional(),
-          intervalDays: z.number().int().min(1).optional(),
-          atHour: z.number().int().min(0).max(23).optional(),
-          atMinute: z.number().int().min(0).max(59).optional(),
-          action: z.enum(['dispatch', 'remind']).optional(),
-          sessionMode: z.enum(['new', 'auto']).optional(),
-          misfirePolicy: z.enum(['prompt', 'catch_up_once', 'skip']).optional(),
-          overlapPolicy: z.enum(['wait_review', 'allow_replace']).optional(),
-          timeZone: z.string().nullable().optional(),
-          maxRuns: z.number().int().nullable().optional(),
-        })
-        .optional(),
+      title: 'Create Agy Board Task',
+      description:
+        'Stage a new task on Agy Board. Agent-created cards default to todo/draft and wait for human approval; pass phase/subPhase to override. Put ONLY a 1–3 sentence human-readable brief (<=150 chars) in `description`; put the full execution contract/plan in `prompt` and `subgoals`. Human-exclusive `userNotes` cannot be set via MCP. Include refs and origin provenance (discoveredFromTaskId/originSummary) so the human can review before dispatch.',
+      inputSchema: {
+        title: z.string().min(1),
+        description: z
+          .string()
+          .describe('Concise 1–3 sentence human-readable brief summary (<=150 chars). Do NOT dump multi-paragraph plans here; put full plans in `prompt` and `subgoals`.')
+          .optional(),
+        prompt: z
+          .string()
+          .describe('Full Agent Execution Contract / implementation plan and first-round instructions (Markdown supported).')
+          .optional(),
+        phase: z.enum(TASK_PHASES).optional(),
+        subPhase: z.enum(['draft', 'ready', 'backlog']).optional(),
+        priority: z.enum(TASK_PRIORITIES).optional(),
+        createdBy: z.enum(['user', 'ai']).optional(),
+        discoveredFromTaskId: z.string().optional(),
+        originSummary: z.string().optional(),
+        originConversationId: z.string().optional(),
+        parentConversationId: z.string().optional(),
+        workspaceId: z.string().optional(),
+        workspacePath: z.string().optional(),
+        nextAction: z.string().optional(),
+        dueAt: z.number().int().optional(),
+        mode: z.string().optional(),
+        model: z.string().optional(),
+        reasoningEffort: z.string().optional(),
+        permission: z.enum(TASK_PERMISSIONS).optional(),
+        reuseSession: z.boolean().optional(),
+        useWorktree: z.boolean().optional(),
+        writeGate: z.enum(['unlocked', 'locked']).optional(),
+        reminderAt: z.number().int().optional(),
+        handover: handoverSchema.optional(),
+        tags: z
+          .array(
+            z.object({
+              name: z.string().min(1),
+              promptPrefix: z.string().optional(),
+            }),
+          )
+          .optional(),
+        freeze: z
+          .union([
+            z.string(),
+            z.object({
+              goal: z.string(),
+              progress: z.string(),
+              next: z.string(),
+            }),
+          ])
+          .optional(),
+        subgoals: z
+          .array(
+            z.object({
+              id: z.string().optional(),
+              title: z.string().min(1),
+              detail: z.string().optional(),
+              kind: z.enum(['acceptance', 'implementation', 'review', 'custom']).optional(),
+              required: z.boolean().optional(),
+              dependencies: z.array(z.string()).optional(),
+            }),
+          )
+          .optional(),
+        refs: z
+          .array(
+            z.object({
+              kind: z.enum(['file', 'url', 'artifact', 'command', 'doc']),
+              target: z.string().min(1),
+              label: z.string().optional(),
+            }),
+          )
+          .optional(),
+        schedule: z
+          .object({
+            enabled: z.boolean(),
+            mode: z.enum(['cron', 'once', 'after_completion']).optional(),
+            cron: z.string().optional(),
+            at: z.number().int().optional(),
+            intervalDays: z.number().int().min(1).optional(),
+            atHour: z.number().int().min(0).max(23).optional(),
+            atMinute: z.number().int().min(0).max(59).optional(),
+            action: z.enum(['dispatch', 'remind']).optional(),
+            sessionMode: z.enum(['new', 'auto']).optional(),
+            misfirePolicy: z.enum(['prompt', 'catch_up_once', 'skip']).optional(),
+            overlapPolicy: z.enum(['wait_review', 'allow_replace']).optional(),
+            timeZone: z.string().nullable().optional(),
+            maxRuns: z.number().int().nullable().optional(),
+          })
+          .optional(),
+      },
+      _meta: { ui: { resourceUri: MCP_APP_CARD_URI } },
     },
     async (args) => {
       try {
         const task = service.createTask(args, 'mcp')
-        return textResult({ ok: true, task: summarizeTask(task), fullTask: task })
+        return textResult(
+          { ok: true, task: summarizeTask(task), fullTask: task },
+          { ok: true, task, fullTask: task },
+        )
       } catch (err) {
         return errResult(err)
       }
@@ -788,7 +545,7 @@ export function createBoardMcpServer(service: BoardService): McpServer {
           }
         }
         const task = service.updateTask(taskId, patch, 'mcp')
-        return textResult({ ok: true, task: summarizeTask(task) })
+        return textResult({ ok: true, task: summarizeTask(task) }, { ok: true, task })
       } catch (err) {
         return errResult(err)
       }
@@ -847,7 +604,9 @@ export function createBoardMcpServer(service: BoardService): McpServer {
         if (
           current?.phase === 'todo' &&
           current.subPhase === 'draft' &&
-          (args.subPhase === 'ready' || args.subPhase === 'backlog')
+          (args.subPhase === 'ready' ||
+            args.subPhase === 'backlog' ||
+            (args.phase === 'todo' && args.subPhase === undefined))
         ) {
           return errResult(
             new Error(
@@ -862,7 +621,7 @@ export function createBoardMcpServer(service: BoardService): McpServer {
           force: args.force,
           source: 'mcp',
         })
-        return textResult({ ok: true, task: summarizeTask(task) })
+        return textResult({ ok: true, task: summarizeTask(task) }, { ok: true, task })
       } catch (err) {
         return errResult(err)
       }
@@ -1057,7 +816,10 @@ export function createBoardMcpServer(service: BoardService): McpServer {
             },
             'mcp',
           )
-          return textResult({ ok: true, subgoals: task.subgoals, rollup: task.subgoalRollup, phase: task.phase })
+          return textResult(
+            { ok: true, subgoals: task.subgoals, rollup: task.subgoalRollup, phase: task.phase },
+            { ok: true, task, subgoals: task.subgoals, rollup: task.subgoalRollup, phase: task.phase },
+          )
         }
         const task = service.updateSubgoal(
           args.taskId,
@@ -1073,7 +835,10 @@ export function createBoardMcpServer(service: BoardService): McpServer {
           },
           'mcp',
         )
-        return textResult({ ok: true, phase: task.phase, subPhase: task.subPhase, rollup: task.subgoalRollup, subgoals: task.subgoals })
+        return textResult(
+          { ok: true, phase: task.phase, subPhase: task.subPhase, rollup: task.subgoalRollup, subgoals: task.subgoals },
+          { ok: true, task, phase: task.phase, subPhase: task.subPhase, rollup: task.subgoalRollup, subgoals: task.subgoals },
+        )
       } catch (err) {
         return errResult(err)
       }
@@ -1158,15 +923,27 @@ export function createBoardMcpServer(service: BoardService): McpServer {
           useWorktree: args.useWorktree,
           source: 'mcp',
         })
-        return textResult({
-          ok: true,
-          action: res.action,
-          executionId: res.executionId,
-          conversationId: res.conversationId,
-          phase: res.task.phase,
-          worktreePath: res.task.worktreePath,
-          worktreeBranch: res.task.worktreeBranch,
-        })
+        return textResult(
+          {
+            ok: true,
+            action: res.action,
+            executionId: res.executionId,
+            conversationId: res.conversationId,
+            phase: res.task.phase,
+            worktreePath: res.task.worktreePath,
+            worktreeBranch: res.task.worktreeBranch,
+          },
+          {
+            ok: true,
+            task: res.task,
+            action: res.action,
+            executionId: res.executionId,
+            conversationId: res.conversationId,
+            phase: res.task.phase,
+            worktreePath: res.task.worktreePath,
+            worktreeBranch: res.task.worktreeBranch,
+          },
+        )
       } catch (err) {
         return errResult(err)
       }

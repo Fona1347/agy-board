@@ -64,6 +64,7 @@ export function buildBoardApiRoutes(service: BoardService): RouteDef[] {
         revision: service.db.getRevision(),
         serverTime: Date.now(),
         hostTheme: readHostThemeMode(service.paths.geminiConfigDir),
+        focus: service.getFocusRequest(),
       }),
     },
     {
@@ -185,6 +186,16 @@ export function buildBoardApiRoutes(service: BoardService): RouteDef[] {
         const task = service.getTask(taskId)
         if (!task) throw new DomainError('task-not-found', `No task with id '${taskId}'.`)
         return { task, events: service.listTaskEvents(taskId, 80) }
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/tasks/focus',
+      handler: (data) => {
+        const taskId = String(data.taskId ?? '').trim()
+        if (!taskId) throw new DomainError('task-not-found', 'taskId is required.')
+        const focus = service.requestFocusTask(taskId)
+        return { ok: true, focus, revision: service.db.getRevision() }
       },
     },
     {
