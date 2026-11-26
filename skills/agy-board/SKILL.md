@@ -1,11 +1,28 @@
 ---
 name: agy-board
-description: Manage workspace-bound Todo/Kanban cards, subgoals, TaskSpace deliverable pointers, freeze handovers, reminders, and cross-workspace conversation dispatch on Agy Board.
+description: >-
+  Manage workspace-bound Todo/Kanban cards, subgoals, reminders, schedules,
+  freeze handovers, and cross-workspace session dispatch on Agy Board.
+  Use whenever the user says "记个待办", "加到看板", "记个 todo", "建张卡",
+  "先记下来", "回头再做", "记个想法", "看看看板", "有哪些待办", "优先级最高",
+  "下一步做什么", "提醒我", "定个定时", "派发任务", "冻结交接", "关闭/归档任务",
+  or asks to add, inspect, schedule, or dispatch multi-session tasks on Agy Board.
+  Don't use for trivial one-turn edits, pure Q&A, or Google Calendar events.
 ---
 
 # Agy Board Workflow
 
-Use `agy-board` MCP tools (`board_*`) whenever the user wants to track multi-session work, switch workspaces, break down a plan into subgoals, freeze context for handoff, or dispatch follow-up sessions.
+Use `agy-board` MCP tools (`board_*`) whenever the user wants to track multi-session work, switch workspaces, break down a plan into subgoals, freeze context for handoff, set reminders/schedules, or dispatch follow-up sessions.
+
+## Intent Routing (Quick Reference)
+
+| User Intent (ZH / EN) | Primary MCP Tool |
+| :--- | :--- |
+| 记个待办 / 加到看板 / 建张卡 / 先记下来 / 回头再做 / add to board | `board_create` (lands in `todo/draft`) |
+| 看看看板 / 有哪些待办 / 查任务进度 / check board | `board_list` / `board_get` / `board_card` |
+| 下一步做什么 / 优先级最高 / next ready task | `next_ready_task` / `board_list` |
+| 提醒我 / 定个定时 / 每天或每周跑一次 / schedule task | `board_schedule` or `board_update` (`reminderAt`) |
+| 开跑 / 派发任务 / 冻结交接 / 结单归档 / dispatch or close | `board_dispatch` / `board_update` (`freeze`) / `board_transition` |
 
 ## Key Practices
 
