@@ -271,9 +271,12 @@
 }
 
 .list-groups-scroll {
-  flex: 1;
+  flex: 1 1 0%;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .list-row-check {

@@ -265,6 +265,9 @@
   color: var(--agy-warn-fg);
   font-size: 12px;
   flex-shrink: 0;
+  max-height: 32vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sched-alert-row {
