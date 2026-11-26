@@ -178,13 +178,14 @@ function SortableSubgoalItem({
       className="subgoal-row-item"
       style={style}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
-        <div className="row-wrap" style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ cursor: 'grab', color: 'var(--agy-muted-fg)' }} {...attributes} {...listeners}>
+      <div className="subgoal-main-row">
+        <div className="subgoal-left-group">
+          <span style={{ cursor: 'grab', color: 'var(--agy-muted-fg)', marginTop: 2, flexShrink: 0 }} {...attributes} {...listeners}>
             <GripVertical size={13} />
           </span>
           <input
             type="checkbox"
+            style={{ marginTop: 3, flexShrink: 0 }}
             checked={subgoal.status === 'done'}
             onChange={() => onToggleStatus(subgoal, subgoal.status === 'done' ? 'open' : 'done')}
           />
@@ -194,10 +195,16 @@ function SortableSubgoalItem({
               opacity: subgoal.status === 'skipped' ? 0.6 : 1,
               fontWeight: 500,
               wordBreak: 'break-word',
+              flex: 1,
+              minWidth: 0,
+              lineHeight: 1.4,
             }}
           >
             {subgoal.title}
           </span>
+        </div>
+
+        <div className="row-wrap subgoal-right-actions">
           <button
             type="button"
             className="badge"
@@ -210,9 +217,6 @@ function SortableSubgoalItem({
           >
             {subgoal.required ? tr(locale, 'required') : tr(locale, 'optional')}
           </button>
-        </div>
-
-        <div className="row-wrap">
           {conv && (
             <>
               <button
@@ -1011,22 +1015,16 @@ export function TaskDetailView({
         {hasUnifiedStatusBanner && (
           <div className="detail-status-slot" data-testid="detail-status-slot">
             {isDraft && (
-              <div className="detail-status-banner is-warn" data-testid="draft-banner">
-                <div className="row-wrap" style={{ flex: 1, minWidth: 0 }}>
-                  <span className="row-wrap text-warn" style={{ fontSize: 12, fontWeight: 600 }}>
-                    <Sparkles size={14} />
-                    <span>{tr(locale, 'draftBadge')}</span>
-                  </span>
-                  <span className="card-meta-line" style={{ whiteSpace: 'normal' }}>
-                    {tr(locale, 'draftBanner')}
-                  </span>
-                  {task.originSummary && (
-                    <span className="card-meta-line" style={{ whiteSpace: 'normal' }}>
-                      {tr(locale, 'originSummary')}: {task.originSummary}
-                    </span>
-                  )}
-                </div>
-                <div className="row-wrap">
+              <div
+                className="detail-status-banner is-warn detail-draft-bar"
+                data-testid="draft-banner"
+                title={tr(locale, 'draftBanner')}
+              >
+                <span className="row-wrap text-warn" style={{ fontSize: 12, fontWeight: 600, gap: 5 }}>
+                  <Sparkles size={13} />
+                  <span>{locale === 'zh' ? 'AI 草稿 · 待审' : 'AI Draft · Review'}</span>
+                </span>
+                <div className="row-wrap" style={{ gap: 6, flexShrink: 0 }}>
                   <button
                     type="button"
                     className="btn btn-xs btn-ok"
@@ -1465,6 +1463,12 @@ export function TaskDetailView({
                   onChange={(e) => setDescDraft(e.target.value)}
                   placeholder={tr(locale, 'briefPlaceholder')}
                 />
+              )}
+
+              {task.originSummary?.trim() && (
+                <div className="detail-origin-note" data-testid="detail-origin-note">
+                  <span style={{ fontWeight: 600 }}>{tr(locale, 'originSummary')}:</span> {task.originSummary.trim()}
+                </div>
               )}
             </div>
 
@@ -3132,6 +3136,23 @@ export function TaskDetailView({
                 <span>{tr(locale, 'approvePass')}</span>
               </button>
             )
+          ) : isDraft ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy}
+              data-testid="footer-approve-draft-btn"
+              title={`${tr(locale, 'approveDraft')} (A)`}
+              onClick={() =>
+                void runAction(
+                  () => boardApi.transitionTask(task.id, 'todo', { subPhase: 'ready' }),
+                  locale === 'zh' ? '已审校，移入 Ready' : 'Approved to Ready',
+                )
+              }
+            >
+              <Check size={12} />
+              <span>{tr(locale, 'approveDraft')}</span>
+            </button>
           ) : primaryConv && task.phase !== 'closed' ? (
             <button
               type="button"

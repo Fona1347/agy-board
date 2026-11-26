@@ -2099,6 +2099,7 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
             onJump={(cid, opts) => void handleJump(cid, opts)}
             onConfirmPermission={(id) => void handleConfirmPermission(id)}
             onApproveAndClose={(id) => void handleApproveAndClose(id)}
+            onApproveDraft={(t) => void handleApproveDraftToReady(t)}
             onAcceptScheduleCycle={(id) => void handleAcceptScheduleCycle(id)}
           />
         )}
@@ -2122,6 +2123,7 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
             onJump={(cid, opts) => void handleJump(cid, opts)}
             onConfirmPermission={(id) => void handleConfirmPermission(id)}
             onApproveAndClose={(id) => void handleApproveAndClose(id)}
+            onApproveDraft={(t) => void handleApproveDraftToReady(t)}
             onAcceptScheduleCycle={(id) => void handleAcceptScheduleCycle(id)}
             onMovePhase={(id, phase, order) => void handleMovePhase(id, phase, order)}
             onReorderPhase={(phase, ids) => void handleReorderPhase(phase, ids)}

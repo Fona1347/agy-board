@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CheckCircle2, ChevronUp, ChevronsUp, Columns2, ExternalLink, GitBranch, ShieldAlert, Timer } from 'lucide-react'
+import { Check, CheckCircle2, ChevronUp, ChevronsUp, Columns2, ExternalLink, GitBranch, ShieldAlert, Timer } from 'lucide-react'
 import { requiresPermissionConfirmation } from '../../core/handover.ts'
 import { hasOpenExecution, type TaskPermission, type TaskRecord } from '../../core/types.ts'
 import { formatPhaseSubPhaseLabel, tr, type Locale } from '../i18n.ts'
@@ -41,6 +41,7 @@ export interface TaskCardProps {
   onJump?: (conversationId: string, options?: { split?: 'right' }) => void
   onConfirmPermission?: (taskId: string) => void
   onApproveAndClose?: (taskId: string) => void
+  onApproveDraft?: (task: TaskRecord) => void
   onAcceptScheduleCycle?: (taskId: string) => void
 }
 
@@ -58,6 +59,7 @@ export function TaskCard({
   onJump,
   onConfirmPermission,
   onApproveAndClose,
+  onApproveDraft,
   onAcceptScheduleCycle,
 }: TaskCardProps) {
   const needsPerm = requiresPermissionConfirmation(task, sessionDefaultPermission)
@@ -364,6 +366,22 @@ export function TaskCard({
           )}
         </div>
         <div className="row-wrap" style={{ gap: 4, flexShrink: 0 }}>
+          {task.phase === 'todo' && task.subPhase === 'draft' && !compact && onApproveDraft && (
+            <button
+              type="button"
+              className="btn btn-xs btn-ok"
+              data-testid={`card-approve-draft-${task.id}`}
+              title={`${tr(locale, 'approveDraft')} (A)`}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                onApproveDraft(task)
+              }}
+            >
+              <Check size={10} />
+              <span>{locale === 'zh' ? '通过' : 'Approve'}</span>
+            </button>
+          )}
           {isActivePhase && !compact && primaryConv && onJump && (
             <button
               type="button"

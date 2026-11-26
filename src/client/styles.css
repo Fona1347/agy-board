@@ -2820,3 +2820,43 @@ textarea {
   opacity: 1;
 }
 
+.detail-draft-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding: 6px 10px;
+}
+
+.detail-origin-note {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--agy-border);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--agy-muted-fg);
+  word-break: break-word;
+}
+
+.subgoal-main-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.subgoal-left-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.subgoal-right-actions {
+  flex-shrink: 0;
+  gap: 3px;
+}
+

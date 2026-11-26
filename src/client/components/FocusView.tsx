@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -47,6 +48,7 @@ interface FocusViewProps {
   onJump: (conversationId: string, options?: { split?: 'right' }) => void
   onConfirmPermission: (taskId: string) => void
   onApproveAndClose: (taskId: string) => void
+  onApproveDraft?: (task: TaskRecord) => void
   onAcceptScheduleCycle?: (taskId: string) => void
 }
 
@@ -74,6 +76,7 @@ export function FocusView({
   onJump,
   onConfirmPermission,
   onApproveAndClose,
+  onApproveDraft,
   onAcceptScheduleCycle,
 }: FocusViewProps) {
   const [openNeedsYou, setOpenNeedsYou] = useState(true)
@@ -560,6 +563,9 @@ export function FocusView({
                     <div className="quiet-pool-row-main">
                       <StatusGlyph phase={task.phase} subPhase={task.subPhase} size={13} />
                       <span className="quiet-pool-row-title">{task.title}</span>
+                      {task.phase === 'todo' && task.subPhase === 'draft' && (
+                        <span className="badge badge-warn">{tr(locale, 'draftBadge')}</span>
+                      )}
                       {wsBadge.label && <span className="ws-micro-tag">{wsBadge.label}</span>}
                       {tick ? (
                         <span className="badge tabular-nums">
@@ -582,6 +588,18 @@ export function FocusView({
                       )}
                     </div>
                     <div className="row-wrap" onClick={(e) => e.stopPropagation()}>
+                      {task.phase === 'todo' && task.subPhase === 'draft' && onApproveDraft && (
+                        <button
+                          type="button"
+                          className="btn btn-xs btn-ok"
+                          data-testid={`quiet-approve-draft-${task.id}`}
+                          title={`${tr(locale, 'approveDraft')} (A)`}
+                          onClick={() => onApproveDraft(task)}
+                        >
+                          <Check size={10} />
+                          <span>{locale === 'zh' ? '通过' : 'Approve'}</span>
+                        </button>
+                      )}
                       {snoozed ? (
                         <button
                           type="button"

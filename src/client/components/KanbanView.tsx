@@ -38,6 +38,7 @@ interface KanbanViewProps {
   onJump: (conversationId: string, options?: { split?: 'right' }) => void
   onConfirmPermission: (taskId: string) => void
   onApproveAndClose: (taskId: string) => void
+  onApproveDraft?: (task: TaskRecord) => void
   onAcceptScheduleCycle?: (taskId: string) => void
   onMovePhase: (taskId: string, targetPhase: TaskPhase, sortOrder?: number) => void
   onReorderPhase: (phase: TaskPhase, orderedIds: string[]) => void
@@ -83,6 +84,7 @@ export function KanbanView({
   onJump,
   onConfirmPermission,
   onApproveAndClose,
+  onApproveDraft,
   onAcceptScheduleCycle,
   onMovePhase,
   onReorderPhase,
@@ -207,6 +209,7 @@ export function KanbanView({
       onJump={onJump}
       onConfirmPermission={onConfirmPermission}
       onApproveAndClose={onApproveAndClose}
+      onApproveDraft={onApproveDraft}
       onAcceptScheduleCycle={onAcceptScheduleCycle}
     />
   )
@@ -420,7 +423,15 @@ export function KanbanView({
           <div className="kanban-section-head">
             <span className="kanban-section-title">
               <StatusGlyph phase="todo" size={14} />
-              <span>{locale === 'zh' ? '待启动 Ready' : 'Ready to Start'}</span>
+              <span>
+                {byPhase.todo.some((t) => t.subPhase === 'draft')
+                  ? locale === 'zh'
+                    ? '待启动 / 草稿'
+                    : 'Ready & Drafts'
+                  : locale === 'zh'
+                    ? '待启动 Ready'
+                    : 'Ready to Start'}
+              </span>
               <span className="kanban-count-pill tabular-nums">{byPhase.todo.length}</span>
             </span>
             <span className="kanban-section-hint">
