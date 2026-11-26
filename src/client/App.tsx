@@ -7,6 +7,7 @@ import {
   FolderGit2,
   FolderPlus,
   Languages,
+  Layers,
   List,
   LogOut,
   Maximize2,
@@ -20,7 +21,9 @@ import {
   RotateCcw,
   Search,
   SlidersHorizontal,
+  Sparkles,
   Sun,
+  Tag,
   Target,
   Trash2,
   X,
@@ -28,7 +31,7 @@ import {
 } from 'lucide-react'
 import type { BoardSnapshot, DiscoveredConversation, TaskPhase, TaskRecord, WorkspaceRecord } from '../core/types.ts'
 import { fileUriToPath, isPathEqualOrInside, matchWorkspaceForPath, normalizeFsPath, pathComparisonKey } from '../core/workspace.ts'
-import { boardApi, getSidecar, setBoardApiSandbox } from './api.ts'
+import { boardApi, getSidecar, setBoardApiSandbox, type ConversationGovernanceConfig } from './api.ts'
 import { createDemoSandboxController, type DemoSandboxController } from './demoSandbox.ts'
 import { FocusView } from './components/FocusView.tsx'
 import { KanbanView, type BoardLayoutTier } from './components/KanbanView.tsx'
@@ -152,6 +155,15 @@ export function matchesBoardSearch(task: TaskRecord, rawQuery: string): boolean 
   return parts.some((p) => p.toLowerCase().includes(needle))
 }
 
+const DEFAULT_GOVERNANCE_CONFIG: ConversationGovernanceConfig = {
+  autoRename: true,
+  titlePrefix: '[Board]',
+  autoTag: true,
+  autoGroup: true,
+  conversationGroupId: 'agy-board',
+  autoArchiveOnFinish: true,
+}
+
 export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   const shellRef = useRef<HTMLDivElement>(null)
   const revisionRef = useRef<number>(initialSnapshot?.revision ?? 0)
@@ -178,6 +190,8 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   const [rootBgTheme, setRootBgTheme] = useState<'dark' | 'light' | null>(readRootBackgroundTheme)
   const [mediaTheme, setMediaTheme] = useState<'dark' | 'light'>(readMediaTheme)
   const [autoOpenSession, setAutoOpenSession] = useState<boolean>(readInitialAutoOpen)
+  const [governance, setGovernance] = useState<ConversationGovernanceConfig>(DEFAULT_GOVERNANCE_CONFIG)
+  const [cleaningConversations, setCleaningConversations] = useState(false)
 
   const [showFilterPopover, setShowFilterPopover] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -379,6 +393,21 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   }, [fetchSnapshot, initialSnapshot, demoMode])
 
   useEffect(() => {
+    if (initialSnapshot && !demoMode) return
+    if (!showFilterPopover) return
+    let cancelled = false
+    void boardApi
+      .getConversationGovernance()
+      .then((res) => {
+        if (!cancelled && res?.config) setGovernance(res.config)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [showFilterPopover, initialSnapshot, demoMode])
+
+  useEffect(() => {
     if (initialSnapshot || demoMode) return
     const sidecar = getSidecar()
     const checkRevisionAndHostTheme = () => {
@@ -469,6 +498,61 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
       globalThis.localStorage?.setItem('agy-board:autoOpenSession', String(next))
     } catch {
       // ignore
+    }
+  }
+
+  const handleToggleGovernance = async (
+    key: 'autoRename' | 'autoTag' | 'autoGroup' | 'autoArchiveOnFinish',
+  ) => {
+    const nextVal = !governance[key]
+    setGovernance((prev) => ({ ...prev, [key]: nextVal }))
+    try {
+      const res = await boardApi.updateConversationGovernance({ [key]: nextVal })
+      if (res?.config) setGovernance(res.config)
+    } catch (err) {
+      setGovernance((prev) => ({ ...prev, [key]: !nextVal }))
+      showToast(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleCleanupFinishedConversations = async () => {
+    if (cleaningConversations) return
+    setCleaningConversations(true)
+    try {
+      const res = await boardApi.cleanupFinishedConversations()
+      if (!res.available) {
+        showToast(
+          locale === 'zh'
+            ? '当前环境不支持 Antigravity 2.35+ 会话归档接口'
+            : 'Antigravity 2.35+ archive API is unavailable',
+        )
+      } else if (res.candidateCount === 0) {
+        showToast(
+          locale === 'zh'
+            ? '没有需要清理的已完结会话'
+            : 'No finished conversations to archive',
+        )
+      } else if (res.failedIds.length > 0) {
+        showToast(
+          locale === 'zh'
+            ? `已归档 ${res.archivedIds.length} 个已完结会话（${res.failedIds.length} 个失败）`
+            : `Archived ${res.archivedIds.length} finished chat(s) (${res.failedIds.length} failed)`,
+        )
+      } else {
+        showToast(
+          demoMode
+            ? locale === 'zh'
+              ? `演示沙箱：已模拟归档 ${res.archivedIds.length} 个已完结会话`
+              : `Demo Sandbox: simulated archiving ${res.archivedIds.length} finished chat(s)`
+            : locale === 'zh'
+              ? `已归档 ${res.archivedIds.length} 个已完结会话`
+              : `Archived ${res.archivedIds.length} finished chat(s)`,
+        )
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCleaningConversations(false)
     }
   }
 
@@ -569,6 +653,29 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
     () => allTasks.filter((t) => (showArchived ? t.archivedAt !== undefined : t.archivedAt === undefined) && hasAnyScheduleOrReminder(t)).length,
     [allTasks, showArchived],
   )
+
+  const finishedConversationCount = useMemo(() => {
+    const openConvIds = new Set<string>()
+    for (const t of allTasks) {
+      if (t.archivedAt === undefined && t.phase !== 'closed') {
+        for (const c of t.conversations) openConvIds.add(c.conversationId)
+      }
+    }
+    const candidates = new Set<string>()
+    for (const t of allTasks) {
+      if (t.phase !== 'closed' && t.archivedAt === undefined) continue
+      for (const c of t.conversations) {
+        if (c.role === 'origin' || c.role === 'reference') continue
+        if (!openConvIds.has(c.conversationId)) candidates.add(c.conversationId)
+      }
+      for (const ex of t.executions) {
+        if (ex.conversationId && ex.endedAt !== undefined && !openConvIds.has(ex.conversationId)) {
+          candidates.add(ex.conversationId)
+        }
+      }
+    }
+    return candidates.size
+  }, [allTasks])
 
   const activeWorkspaceLabel = useMemo(() => {
     if (!workspaceFilter) return ''
@@ -1512,6 +1619,73 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
                 >
                   <Maximize2 size={11} />
                   <span>{tr(locale, 'openFullScreen')}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="popover-section" style={{ borderTop: '1px solid var(--agy-border)', paddingTop: 10 }}>
+              <span className="popover-label">
+                {locale === 'zh' ? '会话侧栏治理 (agy 2.35+)' : 'Sidebar Governance (agy 2.35+)'}
+              </span>
+              <div className="popover-grid-2">
+                <button
+                  type="button"
+                  className={`btn btn-xs${governance.autoRename ? ' is-active' : ''}`}
+                  aria-pressed={governance.autoRename}
+                  data-testid="gov-toggle-rename"
+                  onClick={() => void handleToggleGovernance('autoRename')}
+                >
+                  <Pencil size={11} />
+                  <span>{locale === 'zh' ? `自动改名 ${governance.titlePrefix}` : `Rename ${governance.titlePrefix}`}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs${governance.autoTag ? ' is-active' : ''}`}
+                  aria-pressed={governance.autoTag}
+                  data-testid="gov-toggle-tag"
+                  onClick={() => void handleToggleGovernance('autoTag')}
+                >
+                  <Tag size={11} />
+                  <span>{locale === 'zh' ? '打标 agy-board' : 'Tag agy-board'}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs${governance.autoGroup ? ' is-active' : ''}`}
+                  aria-pressed={governance.autoGroup}
+                  data-testid="gov-toggle-group"
+                  onClick={() => void handleToggleGovernance('autoGroup')}
+                >
+                  <Layers size={11} />
+                  <span>{locale === 'zh' ? '归组折叠' : 'Group sidebar'}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs${governance.autoArchiveOnFinish ? ' is-active' : ''}`}
+                  aria-pressed={governance.autoArchiveOnFinish}
+                  data-testid="gov-toggle-archive"
+                  onClick={() => void handleToggleGovernance('autoArchiveOnFinish')}
+                >
+                  <Archive size={11} />
+                  <span>{locale === 'zh' ? '完结同步归档' : 'Auto-archive done'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-xs"
+                  style={{ gridColumn: '1 / -1' }}
+                  disabled={cleaningConversations}
+                  data-testid="gov-cleanup-finished"
+                  onClick={() => void handleCleanupFinishedConversations()}
+                >
+                  <Sparkles size={11} />
+                  <span>
+                    {cleaningConversations
+                      ? locale === 'zh'
+                        ? '正在清理已完结会话...'
+                        : 'Archiving finished chats...'
+                      : locale === 'zh'
+                        ? `一键清理已完结会话 (${finishedConversationCount})`
+                        : `Archive Finished Chats (${finishedConversationCount})`}
+                  </span>
                 </button>
               </div>
             </div>

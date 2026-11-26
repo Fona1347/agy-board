@@ -145,6 +145,40 @@ export function buildBoardApiRoutes(service: BoardService): RouteDef[] {
     },
     {
       method: 'GET',
+      path: '/api/conversations/governance',
+      handler: () => ({
+        ok: true,
+        config: service.getConversationGovernanceConfig(),
+      }),
+    },
+    {
+      method: 'POST',
+      path: '/api/conversations/governance/update',
+      handler: (data) => {
+        const config = service.updateConversationGovernanceConfig({
+          ...(data.autoRename !== undefined ? { autoRename: asBoolean(data.autoRename) } : {}),
+          ...(data.titlePrefix !== undefined ? { titlePrefix: asString(data.titlePrefix) } : {}),
+          ...(data.autoTag !== undefined ? { autoTag: asBoolean(data.autoTag) } : {}),
+          ...(data.autoGroup !== undefined ? { autoGroup: asBoolean(data.autoGroup) } : {}),
+          ...(data.conversationGroupId !== undefined ? { conversationGroupId: asString(data.conversationGroupId) } : {}),
+          ...(data.autoArchiveOnFinish !== undefined ? { autoArchiveOnFinish: asBoolean(data.autoArchiveOnFinish) } : {}),
+        })
+        return { ok: true, config, revision: service.db.getRevision() }
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/conversations/cleanup-finished',
+      handler: async (data) => {
+        const result = await service.cleanupFinishedConversations({
+          workspaceId: asString(data.workspaceId),
+          dryRun: asBoolean(data.dryRun),
+        })
+        return { ...result, revision: service.db.getRevision() }
+      },
+    },
+    {
+      method: 'GET',
       path: '/api/tasks/get',
       handler: (data) => {
         const taskId = String(data.taskId ?? '')

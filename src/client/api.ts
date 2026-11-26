@@ -88,6 +88,28 @@ export interface TaskDetailResponse {
   comments?: TaskCommentRecord[]
 }
 
+export interface ConversationGovernanceConfig {
+  autoRename: boolean
+  titlePrefix: string
+  autoTag: boolean
+  autoGroup: boolean
+  conversationGroupId: string
+  autoArchiveOnFinish: boolean
+}
+
+export interface ConversationCleanupResult {
+  ok: true
+  available: boolean
+  dryRun: boolean
+  scannedTasks: number
+  candidateCount: number
+  archivedIds: string[]
+  skippedIds: string[]
+  failedIds: string[]
+  errors: Array<{ conversationId: string; error: string }>
+  revision?: number
+}
+
 export interface SidecarBridge {
   conversationId?: string
   fetch(url: string, options?: RequestInit): Promise<Response>
@@ -495,6 +517,25 @@ const realBoardApi = {
       ok: res.ok,
       message: res.ok ? `Jumped via CDP to ${conversationId.slice(0, 8)}` : res.reason ?? 'Could not jump via CDP.',
     }
+  },
+  getConversationGovernance(): Promise<{ ok: true; config: ConversationGovernanceConfig }> {
+    return requestJson('/api/conversations/governance')
+  },
+  updateConversationGovernance(
+    patch: Partial<ConversationGovernanceConfig>,
+  ): Promise<{ ok: true; config: ConversationGovernanceConfig; revision?: number }> {
+    return requestJson('/api/conversations/governance/update', {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    })
+  },
+  cleanupFinishedConversations(
+    options: { workspaceId?: string; dryRun?: boolean } = {},
+  ): Promise<ConversationCleanupResult> {
+    return requestJson('/api/conversations/cleanup-finished', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    })
   },
 }
 

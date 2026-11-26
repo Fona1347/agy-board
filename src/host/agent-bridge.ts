@@ -843,7 +843,10 @@ export class DefaultAgentBridge implements AgentBridge {
     if (req.projectId) body.projectId = req.projectId
     if (req.model) body.model = req.model
     if (req.title) body.title = req.title
-    if (req.tags && req.tags.length > 0) body.tags = req.tags
+    if (req.tags && req.tags.length > 0) {
+      const normalizedTags = [...new Set(req.tags.map((t) => t.trim()).filter(Boolean))]
+      if (normalizedTags.length > 0) body.tags = normalizedTags
+    }
     const raw = await this.callConversationService('CreateConversation', body, 20_000)
     const conversationId = extractConversationId(raw)
     if (!conversationId) {
@@ -877,7 +880,26 @@ export class DefaultAgentBridge implements AgentBridge {
     if (!SAFE_CONVERSATION_ID_RE.test(conversationId)) {
       throw new Error(`Invalid conversationId: ${conversationId}`)
     }
-    return this.callConversationService('UpdateConversation', { conversationId, annotations }, 5_000)
+    const cleanAnnotations: UpdateConversationAnnotations = {}
+    if (annotations.title !== undefined) cleanAnnotations.title = annotations.title
+    if (annotations.archived !== undefined) cleanAnnotations.archived = annotations.archived
+    if (annotations.pinned !== undefined) cleanAnnotations.pinned = annotations.pinned
+    if (annotations.starred !== undefined) cleanAnnotations.starred = annotations.starred
+    if (annotations.tags !== undefined) {
+      const normalizedTags = [...new Set(annotations.tags.map((t) => t.trim()).filter(Boolean))]
+      if (normalizedTags.length > 0) cleanAnnotations.tags = normalizedTags
+    }
+    if (annotations.conversationGroupId !== undefined) {
+      cleanAnnotations.conversationGroupId = annotations.conversationGroupId
+    }
+    if (Object.keys(cleanAnnotations).length === 0) {
+      return {}
+    }
+    return this.callConversationService(
+      'UpdateConversation',
+      { conversationId, annotations: cleanAnnotations },
+      5_000,
+    )
   }
 
   private async runAgentApi(args: string[], projectId?: string): Promise<Record<string, unknown>> {
