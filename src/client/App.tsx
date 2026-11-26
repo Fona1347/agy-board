@@ -29,17 +29,21 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import type {
-  BoardFocusRequest,
-  BoardSnapshot,
-  DiscoveredConversation,
-  TaskPhase,
-  TaskRecord,
-  WorkspaceRecord,
+import {
+  hasOpenExecution,
+  type BoardFocusRequest,
+  type BoardSnapshot,
+  type DiscoveredConversation,
+  type TaskPhase,
+  type TaskRecord,
+  type WorkspaceRecord,
 } from '../core/types.ts'
+import { requiresPermissionConfirmation } from '../core/handover.ts'
 import { fileUriToPath, isPathEqualOrInside, matchWorkspaceForPath, normalizeFsPath, pathComparisonKey } from '../core/workspace.ts'
 import { boardApi, getSidecar, setBoardApiSandbox, type ConversationGovernanceConfig } from './api.ts'
 import { createDemoSandboxController, type DemoSandboxController } from './demoSandbox.ts'
+import { resolveReviewShortcut, shouldIgnoreBoardShortcut } from './shortcuts.ts'
+import { computeSnoozeTarget, isTaskSnoozed } from './viewFilters.ts'
 import { FocusView } from './components/FocusView.tsx'
 import { KanbanView, type BoardLayoutTier } from './components/KanbanView.tsx'
 import { ListView, type ListGroupBy } from './components/ListView.tsx'
@@ -247,6 +251,8 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   const [renamingWsId, setRenamingWsId] = useState<string | null>(null)
   const [renameWsDraft, setRenameWsDraft] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const [dispatchConfirmTaskId, setDispatchConfirmTaskId] = useState<string | null>(null)
+  const [dispatchConfirmBusy, setDispatchConfirmBusy] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [demoMode, setDemoMode] = useState(false)
   const demoControllerRef = useRef<DemoSandboxController | null>(null)
@@ -802,6 +808,9 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
   )
 
   const selectedTask = selectedTaskId ? allTasks.find((t) => t.id === selectedTaskId) ?? null : null
+  const dispatchConfirmTask = dispatchConfirmTaskId
+    ? allTasks.find((t) => t.id === dispatchConfirmTaskId) ?? null
+    : null
 
   const enterDemoSandbox = useCallback(() => {
     preSandboxStateRef.current = {
@@ -1014,32 +1023,188 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
     }
   }
 
-  const handleTogglePin = async (taskId: string, pin: boolean) => {
-    try {
-      await boardApi.setMarks(taskId, { pin })
-      await fetchSnapshot()
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err))
-    }
-  }
+  const handleTogglePin = useCallback(
+    async (taskId: string, pin: boolean) => {
+      try {
+        await boardApi.setMarks(taskId, { pin })
+        showToast(pin ? tr(locale, 'pinToFocus') : tr(locale, 'unpinFromFocus'))
+        await fetchSnapshot()
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [fetchSnapshot, locale, showToast],
+  )
 
-  const handleSnoozeTask = async (taskId: string, snoozeUntil: number | null) => {
-    try {
-      await boardApi.setMarks(taskId, { snoozeUntil })
-      showToast(
-        snoozeUntil === null
-          ? locale === 'zh'
-            ? '已解除延后'
-            : 'Unsnoozed'
-          : locale === 'zh'
-            ? '已延后提醒'
-            : 'Snoozed',
-      )
-      await fetchSnapshot()
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err))
+  const handleSnoozeTask = useCallback(
+    async (taskId: string, snoozeUntil: number | null) => {
+      try {
+        await boardApi.setMarks(taskId, { snoozeUntil })
+        showToast(
+          snoozeUntil === null
+            ? locale === 'zh'
+              ? '已解除延后'
+              : 'Unsnoozed'
+            : locale === 'zh'
+              ? '已延后提醒'
+              : 'Snoozed',
+        )
+        await fetchSnapshot()
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [fetchSnapshot, locale, showToast],
+  )
+
+  const handleApproveDraftToReady = useCallback(
+    async (task: TaskRecord) => {
+      try {
+        await boardApi.transitionTask(task.id, 'todo', { subPhase: 'ready' })
+        showToast(locale === 'zh' ? '已审校，移入 Ready' : 'Approved to Ready')
+        await fetchSnapshot()
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [fetchSnapshot, locale, showToast],
+  )
+
+  const handleConfirmShortcutDispatch = useCallback(
+    async (task: TaskRecord) => {
+      if (dispatchConfirmBusy) return
+      setDispatchConfirmBusy(true)
+      try {
+        const needsPerm = requiresPermissionConfirmation(
+          task,
+          snapshot?.sessionDefaultPermission ?? 'read-only',
+        )
+        if (needsPerm) {
+          await boardApi.confirmPermission(task.id)
+        }
+        const res = await boardApi.dispatch(task.id, { mode: 'auto' })
+        if (autoOpenSession && res.conversationId) {
+          void boardApi.jumpToConversation(res.conversationId).catch(() => {})
+        }
+        showToast(
+          demoMode
+            ? locale === 'zh'
+              ? `演示沙箱：已模拟启动会话 ${res.conversationId.slice(0, 8)}`
+              : `Demo Sandbox: simulated session ${res.conversationId.slice(0, 8)}`
+            : locale === 'zh'
+              ? `已启动会话 ${res.conversationId.slice(0, 8)}`
+              : `Started session ${res.conversationId.slice(0, 8)}`,
+        )
+        setDispatchConfirmTaskId(null)
+        await fetchSnapshot()
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : String(err))
+      } finally {
+        setDispatchConfirmBusy(false)
+      }
+    },
+    [autoOpenSession, demoMode, dispatchConfirmBusy, fetchSnapshot, locale, showToast, snapshot?.sessionDefaultPermission],
+  )
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onReviewKeyDown = (e: KeyboardEvent) => {
+      if (dispatchConfirmTaskId) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setDispatchConfirmTaskId(null)
+          return
+        }
+        if (
+          e.key === 'Enter' &&
+          !dispatchConfirmBusy &&
+          dispatchConfirmTask &&
+          !(dispatchConfirmTask.phase === 'todo' && dispatchConfirmTask.subPhase === 'draft') &&
+          !shouldIgnoreBoardShortcut(e, typeof document !== 'undefined' ? document : undefined)
+        ) {
+          e.preventDefault()
+          void handleConfirmShortcutDispatch(dispatchConfirmTask)
+        }
+        return
+      }
+
+      if (!selectedTask) return
+      if (showNewModal || showFilterPopover) return
+      if (typeof document !== 'undefined' && document.querySelector('[data-testid="ref-preview-modal"]')) {
+        return
+      }
+      if (shouldIgnoreBoardShortcut(e, typeof document !== 'undefined' ? document : undefined)) {
+        return
+      }
+
+      const action = resolveReviewShortcut(e.key)
+      if (!action) return
+      e.preventDefault()
+
+      if (action === 'approve_draft') {
+        if (selectedTask.archivedAt === undefined && selectedTask.phase === 'todo' && selectedTask.subPhase === 'draft') {
+          void handleApproveDraftToReady(selectedTask)
+        } else {
+          showToast(
+            locale === 'zh' ? '仅 AI 草稿可通过 A 审校转 Ready' : 'Only AI Drafts can be approved with A',
+          )
+        }
+        return
+      }
+
+      if (action === 'toggle_focus') {
+        const nextPin = !Boolean(selectedTask.userMarks?.pinnedAt)
+        void handleTogglePin(selectedTask.id, nextPin)
+        return
+      }
+
+      if (action === 'snooze') {
+        if (selectedTask.archivedAt !== undefined || selectedTask.phase === 'closed') {
+          showToast(
+            locale === 'zh' ? '已收尾或归档任务不可延后' : 'Closed or archived tasks cannot be snoozed',
+          )
+          return
+        }
+        const nowMs = Date.now()
+        if (isTaskSnoozed(selectedTask, nowMs)) {
+          void handleSnoozeTask(selectedTask.id, null)
+        } else {
+          void handleSnoozeTask(selectedTask.id, computeSnoozeTarget('2h', nowMs))
+        }
+        return
+      }
+
+      if (action === 'dispatch') {
+        if (selectedTask.archivedAt !== undefined || selectedTask.phase === 'closed') {
+          showToast(
+            locale === 'zh' ? '已收尾或归档任务无法直接派发' : 'Closed or archived tasks cannot be dispatched',
+          )
+          return
+        }
+        if (hasOpenExecution(selectedTask) || selectedTask.phase === 'active') {
+          showToast(locale === 'zh' ? '任务正在执行中' : 'Task already has a running execution')
+          return
+        }
+        setDispatchConfirmTaskId(selectedTask.id)
+      }
     }
-  }
+
+    window.addEventListener('keydown', onReviewKeyDown)
+    return () => window.removeEventListener('keydown', onReviewKeyDown)
+  }, [
+    dispatchConfirmBusy,
+    dispatchConfirmTask,
+    dispatchConfirmTaskId,
+    handleApproveDraftToReady,
+    handleConfirmShortcutDispatch,
+    handleSnoozeTask,
+    handleTogglePin,
+    locale,
+    selectedTask,
+    showFilterPopover,
+    showNewModal,
+    showToast,
+  ])
 
   const handleToggleTodoSubPhase = async (task: TaskRecord) => {
     try {
@@ -2049,6 +2214,91 @@ export function App({ initialSnapshot }: { initialSnapshot?: BoardSnapshot }) {
           onTaskUpdated={fetchSnapshot}
           onToast={showToast}
         />
+      )}
+
+      {dispatchConfirmTask && (
+        <div className="modal-backdrop" onClick={() => !dispatchConfirmBusy && setDispatchConfirmTaskId(null)}>
+          <div
+            className="modal-box"
+            role="dialog"
+            aria-modal="true"
+            aria-label={tr(locale, 'dispatchConfirmTitle')}
+            style={{ width: 'min(440px, 100%)' }}
+            data-testid="dispatch-confirm-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="drawer-header">
+              <strong style={{ fontSize: 13.5 }}>{tr(locale, 'dispatchConfirmTitle')}</strong>
+              <button
+                type="button"
+                className="btn btn-xs btn-ghost"
+                disabled={dispatchConfirmBusy}
+                onClick={() => setDispatchConfirmTaskId(null)}
+                aria-label={tr(locale, 'close')}
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ fontWeight: 600, fontSize: 13 }}>{dispatchConfirmTask.title}</div>
+              <div className="card-meta-line" style={{ whiteSpace: 'normal' }}>
+                {tr(locale, 'dispatchConfirmBody')}
+              </div>
+              {dispatchConfirmTask.workspacePath || dispatchConfirmTask.workspaceLabel ? (
+                <div className="card-meta-line">
+                  <FolderGit2 size={11} />{' '}
+                  {dispatchConfirmTask.workspaceLabel || pathBasename(dispatchConfirmTask.workspacePath)}
+                  {dispatchConfirmTask.useWorktree ? ' · Worktree' : ''}
+                </div>
+              ) : (
+                <div className="badge badge-warn">{tr(locale, 'dispatchWorkspaceUnbound')}</div>
+              )}
+              {dispatchConfirmTask.phase === 'todo' && dispatchConfirmTask.subPhase === 'draft' && (
+                <div className="detail-status-banner is-warn" data-testid="dispatch-confirm-draft-warn">
+                  <span>{tr(locale, 'dispatchDraftWarn')}</span>
+                </div>
+              )}
+              {requiresPermissionConfirmation(dispatchConfirmTask, sessionDefaultPermission) && (
+                <div className="detail-status-banner is-warn">
+                  <span>{tr(locale, 'permissionPendingBanner')}</span>
+                </div>
+              )}
+              <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-xs"
+                  disabled={dispatchConfirmBusy}
+                  onClick={() => setDispatchConfirmTaskId(null)}
+                >
+                  {tr(locale, 'cancel')} (Esc)
+                </button>
+                {dispatchConfirmTask.phase === 'todo' && dispatchConfirmTask.subPhase === 'draft' ? (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-ok"
+                    disabled={dispatchConfirmBusy}
+                    onClick={() => void handleApproveDraftToReady(dispatchConfirmTask)}
+                  >
+                    {tr(locale, 'dispatchApproveFirst')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-primary"
+                    disabled={dispatchConfirmBusy}
+                    data-testid="dispatch-confirm-submit"
+                    onClick={() => void handleConfirmShortcutDispatch(dispatchConfirmTask)}
+                  >
+                    {requiresPermissionConfirmation(dispatchConfirmTask, sessionDefaultPermission)
+                      ? tr(locale, 'dispatchConfirmAndPerm')
+                      : tr(locale, 'dispatchConfirmStart')}{' '}
+                    (Enter)
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {toast && <div className="toast-bar">{toast}</div>}

@@ -367,16 +367,23 @@ export function createBoardMcpServer(service: BoardService): McpServer {
     'List Antigravity registered workspaces, custom workspaces, and recent conversations per workspace.',
     {
       workspacePath: z.string().optional(),
-      limitConversations: z.number().int().min(1).max(100).optional(),
+      query: z.string().optional(),
+      limitConversations: z.number().int().min(1).max(500).optional(),
     },
-    async ({ workspacePath, limitConversations }) => {
+    async ({ workspacePath, query, limitConversations }) => {
       try {
         const workspaces = service.listWorkspaces()
         const conversations = service.listRecentConversations({
           workspacePath,
+          query,
           limit: limitConversations ?? 30,
         })
-        return textResult({ ok: true, workspaces, recentConversations: conversations.conversations })
+        return textResult({
+          ok: true,
+          workspaces,
+          recentConversations: conversations.conversations,
+          hasMoreConversations: conversations.hasMore,
+        })
       } catch (err) {
         return errResult(err)
       }

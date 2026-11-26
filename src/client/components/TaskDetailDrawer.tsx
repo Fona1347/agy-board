@@ -19,6 +19,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  Clock,
   Columns2,
   ExternalLink,
   Eye,
@@ -96,6 +97,7 @@ import { MarkdownText } from './MarkdownText.tsx'
 import { RefPreviewModal, type PreviewData } from './RefPreviewModal.tsx'
 import { isRecurringActiveSchedule, TaskScheduleBar } from './ScheduleComposer.tsx'
 import { StatusGlyph } from './StatusGlyph.tsx'
+import { computeSnoozeTarget, isTaskSnoozed } from '../viewFilters.ts'
 
 const SUBPHASES_BY_PHASE: Record<TaskPhase, readonly TaskSubPhase[]> = {
   needs_you: ['review', 'blocked', 'needs_input', 'permission_pending', 'reminder_due'],
@@ -364,6 +366,11 @@ export function TaskDetailView({
   const [bindRole, setBindRole] = useState<ConversationRole>('primary')
   const [bindSubgoalId, setBindSubgoalId] = useState('')
   const [showAllConvs, setShowAllConvs] = useState(false)
+  const [convSearch, setConvSearch] = useState('')
+  const [convLimit, setConvLimit] = useState(100)
+  const [queriedConvs, setQueriedConvs] = useState<DiscoveredConversation[] | null>(null)
+  const [convHasMore, setConvHasMore] = useState(false)
+  const [convLoading, setConvLoading] = useState(false)
 
   const [freezeGoal, setFreezeGoal] = useState(initialTask.freeze?.goal ?? '')
   const [freezeProgress, setFreezeProgress] = useState(initialTask.freeze?.progress ?? '')
@@ -415,6 +422,10 @@ export function TaskDetailView({
     setBindConvId('')
     setBindRole('primary')
     setBindSubgoalId('')
+    setConvSearch('')
+    setConvLimit(100)
+    setQueriedConvs(null)
+    setConvHasMore(false)
     setWorktreeDiff(null)
     setShowFullDiff(false)
     setConfirmDelete(false)
@@ -485,6 +496,44 @@ export function TaskDetailView({
       cancelled = true
     }
   }, [initialTask.id, initialTask.updatedAt])
+
+  useEffect(() => {
+    if (activeTab !== 'agent') return
+    let cancelled = false
+    const timer = setTimeout(
+      () => {
+        setConvLoading(true)
+        void boardApi
+          .listConversations({
+            ...(!showAllConvs && task.workspaceId ? { projectId: task.workspaceId } : {}),
+            ...(!showAllConvs && task.workspacePath ? { workspacePath: task.workspacePath } : {}),
+            ...(convSearch.trim() ? { query: convSearch.trim() } : {}),
+            limit: convLimit,
+          })
+          .then((res) => {
+            if (cancelled) return
+            if (Array.isArray(res?.conversations) && res.available !== false) {
+              setQueriedConvs(res.conversations)
+              setConvHasMore(Boolean(res.hasMore))
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setQueriedConvs(null)
+              setConvHasMore(false)
+            }
+          })
+          .finally(() => {
+            if (!cancelled) setConvLoading(false)
+          })
+      },
+      convSearch.trim() ? 150 : 0,
+    )
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [activeTab, convLimit, convSearch, showAllConvs, task.workspaceId, task.workspacePath])
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const needsPerm = requiresPermissionConfirmation(task, sessionDefaultPermission)
@@ -572,16 +621,23 @@ export function TaskDetailView({
     })
   }
 
-  const workspaceConvs =
-    showAllConvs || !task.workspacePath
-      ? recentConversations
-      : recentConversations.filter(
-          (c) =>
-            (task.workspaceId && c.projectId === task.workspaceId) ||
-            c.workspacePaths.some(
-              (p) => isPathEqualOrInside(p, task.workspacePath!) || isPathEqualOrInside(task.workspacePath!, p),
-            ),
-        )
+  const fallbackWorkspaceConvs = useMemo(() => {
+    const base =
+      showAllConvs || !task.workspacePath
+        ? recentConversations
+        : recentConversations.filter(
+            (c) =>
+              (task.workspaceId && c.projectId === task.workspaceId) ||
+              c.workspacePaths.some(
+                (p) => isPathEqualOrInside(p, task.workspacePath!) || isPathEqualOrInside(task.workspacePath!, p),
+              ),
+          )
+    const q = convSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((c) => `${c.title}\n${c.preview}\n${c.conversationId}`.toLowerCase().includes(q))
+  }, [convSearch, recentConversations, showAllConvs, task.workspaceId, task.workspacePath])
+
+  const workspaceConvs = queriedConvs ?? fallbackWorkspaceConvs
 
   const resolveWorkspacePatchForDraft = (
     rawPath: string,
@@ -712,6 +768,44 @@ export function TaskDetailView({
     }
   }
 
+  const renderWorktreeDiffBox = (diff: WorktreeDiffResponse, testId?: string) => (
+    <div className="worktree-diff-box" data-testid={testId}>
+      {(diff.message || diff.error) && (
+        <div className="card-meta-line" style={{ whiteSpace: 'normal' }}>
+          {diff.message || diff.error}
+        </div>
+      )}
+      {(diff.stat || diff.diffStat || diff.summary || diff.status) && (
+        <pre className="code-preview" style={{ maxHeight: 160 }}>
+          {diff.stat || diff.diffStat || diff.summary || diff.status}
+        </pre>
+      )}
+      {diff.ok !== false &&
+        diff.hasChanges === false &&
+        !diff.status &&
+        !diff.stat &&
+        !diff.diffStat &&
+        !diff.summary &&
+        !diff.diff &&
+        !diff.patch &&
+        !(diff.files && diff.files.length > 0) && (
+          <div className="card-meta-line">{tr(locale, 'cleanWorktree')}</div>
+        )}
+      {(diff.diff || diff.patch) && (
+        <div>
+          <button type="button" className="btn btn-xs" onClick={() => setShowFullDiff((v) => !v)}>
+            {showFullDiff ? tr(locale, 'hidePatch') : tr(locale, 'showPatch')}
+          </button>
+          {showFullDiff && (
+            <pre className="code-preview" style={{ maxHeight: 220, marginTop: 6 }}>
+              {diff.diff || diff.patch}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
   const canManualToggle = !needsPerm && !openExecution && task.phase !== 'active'
   const wsShortName = task.workspaceLabel || pathBasename(task.workspacePath) || ''
   const isReminderDue = Boolean(
@@ -728,6 +822,7 @@ export function TaskDetailView({
   )
   const isRecurringReview = canApproveReview && isRecurringActiveSchedule(task)
   const isDraft = task.phase === 'todo' && task.subPhase === 'draft'
+  const isSnoozed = isTaskSnoozed(task, Date.now())
   const hasUnifiedStatusBanner = Boolean(
     needsPerm ||
       showBlockedCallout ||
@@ -735,6 +830,7 @@ export function TaskDetailView({
       openExecution ||
       task.phase === 'active' ||
       isDraft ||
+      worktreeDiff ||
       (task.phase === 'needs_you' && task.subPhase === 'review' && !needsPerm),
   )
   const memoSourceText = descDraft
@@ -827,10 +923,36 @@ export function TaskDetailView({
                 )
               }
               aria-label={task.userMarks?.pinnedAt ? (locale === 'zh' ? '取消星标' : 'Unstar') : (locale === 'zh' ? '星标置顶' : 'Star')}
-              title={task.userMarks?.pinnedAt ? tr(locale, 'unpinFromFocus') : tr(locale, 'pinToFocus')}
+              title={`${task.userMarks?.pinnedAt ? tr(locale, 'unpinFromFocus') : tr(locale, 'pinToFocus')} (F)`}
             >
               <Star size={12} fill={task.userMarks?.pinnedAt ? 'currentColor' : 'none'} />
             </button>
+
+            {task.phase !== 'closed' && (
+              <button
+                type="button"
+                className={`btn btn-xs btn-ghost detail-snooze-btn${isSnoozed ? ' is-snoozed' : ''}`}
+                data-testid="detail-snooze-btn"
+                disabled={busy}
+                onClick={() =>
+                  void runAction(
+                    () =>
+                      boardApi.setMarks(task.id, {
+                        snoozeUntil: isSnoozed ? null : computeSnoozeTarget('2h', Date.now()),
+                      }),
+                    isSnoozed
+                      ? tr(locale, 'unsnooze')
+                      : locale === 'zh'
+                        ? '已延后 2 小时'
+                        : 'Snoozed +2h',
+                  )
+                }
+                aria-label={isSnoozed ? tr(locale, 'unsnooze') : tr(locale, 'snooze')}
+                title={`${isSnoozed ? tr(locale, 'unsnooze') : `${tr(locale, 'snooze')} (+2h)`} (S)`}
+              >
+                <Clock size={12} />
+              </button>
+            )}
 
             <button
               type="button"
@@ -909,6 +1031,7 @@ export function TaskDetailView({
                     type="button"
                     className="btn btn-xs btn-ok"
                     disabled={busy}
+                    title={`${tr(locale, 'approveDraft')} (A)`}
                     onClick={() =>
                       void runAction(
                         () => boardApi.transitionTask(task.id, 'todo', { subPhase: 'ready' }),
@@ -1079,6 +1202,18 @@ export function TaskDetailView({
                   <span>{tr(locale, 'reviewSubmitted')}</span>
                 </span>
                 <div className="row-wrap">
+                  {task.worktreePath && (
+                    <button
+                      type="button"
+                      className="btn btn-xs"
+                      disabled={busy}
+                      data-testid="review-worktree-diff-btn"
+                      onClick={() => void handleLoadDiff()}
+                    >
+                      <GitBranch size={11} />
+                      <span>{tr(locale, 'worktreeDiff')}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn-xs"
@@ -1113,6 +1248,26 @@ export function TaskDetailView({
                     )
                   )}
                 </div>
+              </div>
+            )}
+
+            {worktreeDiff && (
+              <div className="detail-status-banner" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                <div className="row-wrap" style={{ justifyContent: 'space-between' }}>
+                  <span className="row-wrap" style={{ fontWeight: 600, fontSize: 11.5 }}>
+                    <GitBranch size={12} />
+                    <span>{worktreeDiff.branch ? `Worktree (${worktreeDiff.branch})` : 'Worktree Diff'}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-ghost"
+                    onClick={() => setWorktreeDiff(null)}
+                    aria-label={tr(locale, 'close')}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+                {renderWorktreeDiffBox(worktreeDiff, 'quick-worktree-diff-box')}
               </div>
             )}
           </div>
@@ -2074,6 +2229,36 @@ export function TaskDetailView({
             )
           })}
 
+          <div className="row-wrap" style={{ marginBottom: 6 }}>
+            <input
+              className="input-field"
+              style={{ flex: '1 1 160px', fontSize: 11.5 }}
+              value={convSearch}
+              onChange={(e) => {
+                setConvSearch(e.target.value)
+                setConvLimit(100)
+              }}
+              placeholder={tr(locale, 'searchConversationsPlaceholder')}
+              data-testid="conv-search-input"
+            />
+            {convLoading && (
+              <span className="card-meta-line" style={{ fontSize: 11 }}>
+                {tr(locale, 'loadingConversations')}
+              </span>
+            )}
+            {convHasMore && (
+              <button
+                type="button"
+                className="btn btn-xs"
+                disabled={convLoading}
+                data-testid="conv-load-more-btn"
+                onClick={() => setConvLimit((n) => n + 100)}
+              >
+                {tr(locale, 'loadMoreConversations')}
+              </button>
+            )}
+          </div>
+
           <div className="row-wrap">
             <select
               className="select-field"
@@ -2420,47 +2605,7 @@ export function TaskDetailView({
                         {task.worktreePath || worktreeDiff?.worktreePath}
                       </div>
                     )}
-                    {worktreeDiff && (
-                      <div className="worktree-diff-box">
-                        {(worktreeDiff.message || worktreeDiff.error) && (
-                          <div className="card-meta-line" style={{ whiteSpace: 'normal' }}>
-                            {worktreeDiff.message || worktreeDiff.error}
-                          </div>
-                        )}
-                        {(worktreeDiff.stat || worktreeDiff.diffStat || worktreeDiff.summary || worktreeDiff.status) && (
-                          <pre className="code-preview" style={{ maxHeight: 160 }}>
-                            {worktreeDiff.stat || worktreeDiff.diffStat || worktreeDiff.summary || worktreeDiff.status}
-                          </pre>
-                        )}
-                        {worktreeDiff.ok !== false &&
-                          worktreeDiff.hasChanges === false &&
-                          !worktreeDiff.status &&
-                          !worktreeDiff.stat &&
-                          !worktreeDiff.diffStat &&
-                          !worktreeDiff.summary &&
-                          !worktreeDiff.diff &&
-                          !worktreeDiff.patch &&
-                          !(worktreeDiff.files && worktreeDiff.files.length > 0) && (
-                            <div className="card-meta-line">{tr(locale, 'cleanWorktree')}</div>
-                          )}
-                        {(worktreeDiff.diff || worktreeDiff.patch) && (
-                          <div>
-                            <button
-                              type="button"
-                              className="btn btn-xs"
-                              onClick={() => setShowFullDiff((v) => !v)}
-                            >
-                              {showFullDiff ? tr(locale, 'hidePatch') : tr(locale, 'showPatch')}
-                            </button>
-                            {showFullDiff && (
-                              <pre className="code-preview" style={{ maxHeight: 220, marginTop: 6 }}>
-                                {worktreeDiff.diff || worktreeDiff.patch}
-                              </pre>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {worktreeDiff && renderWorktreeDiffBox(worktreeDiff)}
                   </div>
                 )}
               </div>
@@ -2890,6 +3035,32 @@ export function TaskDetailView({
         )}
       </div>
 
+      {/* Concise Review Shortcut Hints */}
+      <div className="shortcut-hint-bar detail-shortcut-bar" data-testid="detail-shortcut-hints">
+        {isDraft && (
+          <span className="shortcut-hint-item">
+            <kbd className="shortcut-kbd">A</kbd>
+            <span>{tr(locale, 'shortcutApproveReady')}</span>
+          </span>
+        )}
+        <span className="shortcut-hint-item">
+          <kbd className="shortcut-kbd">F</kbd>
+          <span>{tr(locale, 'shortcutToggleFocus')}</span>
+        </span>
+        {task.phase !== 'closed' && (
+          <span className="shortcut-hint-item">
+            <kbd className="shortcut-kbd">S</kbd>
+            <span>{tr(locale, 'shortcutSnooze')}</span>
+          </span>
+        )}
+        {task.phase !== 'closed' && !openExecution && (
+          <span className="shortcut-hint-item">
+            <kbd className="shortcut-kbd">D</kbd>
+            <span>{tr(locale, 'shortcutDispatch')}</span>
+          </span>
+        )}
+      </div>
+
       {/* Consistent Sticky Footer: Quiet Left Context + Single Primary CTA */}
       <div className="detail-sticky-footer" data-testid="detail-sticky-footer">
         <div className="row-wrap" style={{ minWidth: 0 }}>
@@ -2977,6 +3148,7 @@ export function TaskDetailView({
               type="button"
               className="btn btn-primary"
               disabled={busy || needsPerm}
+              title={`${wsShortName ? `${tr(locale, 'startSessionIn')} ${wsShortName}` : tr(locale, 'startSession')} (D)`}
               onClick={() =>
                 void runAction(async () => {
                   const res = await handleDispatchFromDetail({ mode: 'new' })

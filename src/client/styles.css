@@ -2768,3 +2768,55 @@ textarea {
 .detail-capsule-body ul {
   list-style: disc;
 }
+
+/* P2-2: Review shortcut hints & dispatch confirmation */
+.shortcut-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--agy-border-strong);
+  background: var(--agy-card);
+  color: var(--agy-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.shortcut-hint-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--agy-muted-fg);
+}
+
+.shortcut-hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.detail-shortcut-bar {
+  padding: 5px 16px;
+  border-top: 1px solid var(--agy-border);
+  background: var(--agy-recessed-bg);
+  flex-shrink: 0;
+}
+
+.list-shortcut-bar {
+  padding-top: 4px;
+  border-top: 1px dashed var(--agy-border);
+}
+
+.detail-snooze-btn.is-snoozed {
+  color: var(--agy-amber);
+  opacity: 1;
+}
+

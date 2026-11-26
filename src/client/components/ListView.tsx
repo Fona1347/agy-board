@@ -29,6 +29,7 @@ import {
 import { isPathEqualOrInside, pathComparisonKey } from '../../core/workspace.ts'
 import { boardApi } from '../api.ts'
 import { formatPhaseLabel, formatPriorityLabel, tr, type Locale } from '../i18n.ts'
+import { isEditableElement } from '../shortcuts.ts'
 import { collectWorkspaceFolders, formatCreatedStamp, formatShortDue, formatWorkspaceBadge } from '../utils.ts'
 import { ScheduleMicroBadge } from './ScheduleComposer.tsx'
 import {
@@ -411,8 +412,7 @@ export function ListView({
   }
 
   const handleMasterKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement | null
-    if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
+    if (isEditableElement(e.target)) return
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     if (visibleOrderedIds.length === 0) return
     e.preventDefault()
@@ -614,6 +614,28 @@ export function ListView({
             >
               {tr(locale, 'groupByTag')}
             </button>
+          </div>
+          <div className="shortcut-hint-bar list-shortcut-bar" data-testid="list-shortcut-hints">
+            <span className="shortcut-hint-item">
+              <kbd className="shortcut-kbd">↑↓</kbd>
+              <span>{tr(locale, 'shortcutSelect')}</span>
+            </span>
+            <span className="shortcut-hint-item">
+              <kbd className="shortcut-kbd">A</kbd>
+              <span>{tr(locale, 'shortcutApproveReady')}</span>
+            </span>
+            <span className="shortcut-hint-item">
+              <kbd className="shortcut-kbd">F</kbd>
+              <span>{tr(locale, 'shortcutToggleFocus')}</span>
+            </span>
+            <span className="shortcut-hint-item">
+              <kbd className="shortcut-kbd">S</kbd>
+              <span>{tr(locale, 'shortcutSnooze')}</span>
+            </span>
+            <span className="shortcut-hint-item">
+              <kbd className="shortcut-kbd">D</kbd>
+              <span>{tr(locale, 'shortcutDispatch')}</span>
+            </span>
           </div>
         </div>
 

@@ -126,10 +126,13 @@ export function buildBoardApiRoutes(service: BoardService): RouteDef[] {
       method: 'GET',
       path: '/api/conversations',
       handler: (data) =>
-        service.listRecentConversations({
+        service.queryConversations({
           projectId: asString(data.projectId),
           workspacePath: asString(data.workspacePath),
+          query: asString(data.query),
           limit: asNumber(data.limit),
+          offset: asNumber(data.offset),
+          includeLive: asBoolean(data.includeLive),
         }),
     },
     {

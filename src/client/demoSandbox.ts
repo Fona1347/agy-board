@@ -1051,6 +1051,31 @@ export function createDemoSandboxController(options: DemoSandboxOptions = {}): D
       }
     },
 
+    async listConversations(options = {}) {
+      const q = options.query?.trim().toLowerCase() ?? ''
+      const offset = Math.max(Math.floor(options.offset ?? 0), 0)
+      const limit = Math.max(Math.floor(options.limit ?? 200), 1)
+      const filtered = state.snapshot.recentConversations.filter((c) => {
+        if (options.projectId && c.projectId !== options.projectId && !options.workspacePath) return false
+        if (options.workspacePath) {
+          const target = options.workspacePath.toLowerCase()
+          const matchesPath = c.workspacePaths.some((p) => p.toLowerCase().includes(target) || target.includes(p.toLowerCase()))
+          if (!matchesPath && (!options.projectId || c.projectId !== options.projectId)) return false
+        }
+        if (q) {
+          const hay = `${c.title}\n${c.preview}\n${c.conversationId}`.toLowerCase()
+          if (!hay.includes(q)) return false
+        }
+        return true
+      })
+      const conversations = filtered.slice(offset, offset + limit)
+      return {
+        available: true,
+        conversations,
+        hasMore: filtered.length > offset + limit,
+      }
+    },
+
     async registerWorkspace(input) {
       const now = Date.now()
       const cleanPath = input.rootPath.trim()
