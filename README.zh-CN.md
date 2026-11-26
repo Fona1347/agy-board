@@ -18,13 +18,13 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-promo-45s.mp4">
-    <img src="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-preview.gif" alt="Agy Board 演示预览" />
+  <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/antigravity-board-promo-60s.mp4">
+    <img src="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/antigravity-board-preview.gif" alt="Antigravity Board 演示预览" />
   </a>
 </p>
 
 <p align="center">
-  <sub>点击上方动图（或下载 <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-promo-45s.mp4"><code>agy-board-promo-45s.mp4</code></a>）观看 45 秒高清宣传演示。插件内置中/英文与浅色/深色主题一键切换。</sub>
+  <sub>点击上方动图（或下载 <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/antigravity-board-promo-60s.mp4"><code>antigravity-board-promo-60s.mp4</code></a>）观看 60 秒高清解说宣传演示。插件内置中/英文与浅色/深色主题一键切换。</sub>
 </p>
 
 ---

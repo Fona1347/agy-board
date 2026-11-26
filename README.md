@@ -18,13 +18,13 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-promo-45s.mp4">
-    <img src="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-preview.gif" alt="Agy Board Demo Preview" />
+  <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/antigravity-board-promo-60s.mp4">
+    <img src="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/antigravity-board-preview.gif" alt="Antigravity Board Demo Preview" />
   </a>
 </p>
 
 <p align="center">
-  <sub>Click the preview above (or download <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/agy-board-promo-45s.mp4"><code>agy-board-promo-45s.mp4</code></a>) for the 45s HD walkthrough. Demo recorded in Chinese UI; Agy Board supports instant English / Chinese and Light / Dark theme switching.</sub>
+  <sub>Click the preview above (or download <a href="https://github.com/Fona1347/agy-board/releases/download/v0.1.0/antigravity-board-promo-60s.mp4"><code>antigravity-board-promo-60s.mp4</code></a>) for the 60s HD narrated walkthrough. Demo recorded in Chinese UI; Agy Board supports instant English / Chinese and Light / Dark theme switching.</sub>
 </p>
 
 ---
