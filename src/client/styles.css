@@ -2074,6 +2074,49 @@ textarea {
   background: var(--agy-bg);
 }
 
+.detail-human-notes-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 13px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--agy-primary) 34%, var(--agy-border));
+  background: color-mix(in srgb, var(--agy-primary) 5%, var(--agy-bg));
+}
+
+.detail-contract-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--agy-border-strong, var(--agy-border));
+  background: var(--agy-bg);
+}
+
+.detail-ownership-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--agy-primary-text);
+  background: color-mix(in srgb, var(--agy-primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--agy-primary) 30%, transparent);
+}
+
+.detail-nonblocking-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--agy-muted-fg);
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px dashed var(--agy-border);
+  background: color-mix(in srgb, var(--agy-active-fg, #3b82f6) 6%, transparent);
+}
+
 .detail-memo-footer {
   display: flex;
   align-items: center;

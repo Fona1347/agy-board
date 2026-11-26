@@ -369,13 +369,13 @@ describe('core/workspace & session-reuse', () => {
     expect(reusableSessionId({ ...task, reuseSession: false }, new Set(['conv-1']), { force: true })).toBe('conv-1')
   })
 
-  it('locks task content only while an execution is actively running', () => {
+  it('never blocking-freezes task content (replaced by per-dispatch contract snapshots)', () => {
     expect(isTaskContentFrozen({ executions: [] })).toBe(false)
     expect(
       isTaskContentFrozen({
         executions: [{ id: 'e-pre', taskId: 't1', startedAt: 1 }],
       }),
-    ).toBe(true)
+    ).toBe(false)
     expect(
       isTaskContentFrozen({
         executions: [
@@ -388,46 +388,11 @@ describe('core/workspace & session-reuse', () => {
       isTaskContentFrozen({
         executions: [{ id: 'e-active', taskId: 't1', conversationId: 'conv-1', startedAt: 5 }],
       }),
-    ).toBe(true)
-    expect(
-      isTaskContentFrozen({
-        executions: [{ id: 'e-fail-conv', taskId: 't1', conversationId: 'conv-2', startedAt: 5, endedAt: 6, result: 'failed' }],
-      }),
-    ).toBe(false)
-    expect(
-      isTaskContentFrozen({
-        executions: [{ id: 'e-done', taskId: 't1', startedAt: 5, endedAt: 6, result: 'succeeded' }],
-      }),
-    ).toBe(false)
-    expect(
-      isTaskContentFrozen({
-        executions: [{ id: 'e-settled-unknown', taskId: 't1', startedAt: 5, endedAt: 6 }],
-      }),
     ).toBe(false)
     expect(
       isTaskContentFrozen({
         executions: [],
         freeze: { goal: 'G', progress: 'P', next: 'N', frozenAt: 10 },
-      }),
-    ).toBe(false)
-
-    // Recurring schedules stay editable across rounds unless explicitly frozen
-    expect(
-      isTaskContentFrozen({
-        executions: [{ id: 'e-done', taskId: 't1', conversationId: 'conv-1', startedAt: 5, endedAt: 6, result: 'succeeded' }],
-        schedule: { enabled: true, mode: 'cron', cron: '0 9 * * 1-5', runCount: 1 },
-      }),
-    ).toBe(false)
-    expect(
-      isTaskContentFrozen({
-        executions: [{ id: 'e-done', taskId: 't1', conversationId: 'conv-1', startedAt: 5, endedAt: 6, result: 'succeeded' }],
-        schedule: { enabled: true, mode: 'after_completion', intervalDays: 3, runCount: 1 },
-      }),
-    ).toBe(false)
-    expect(
-      isTaskContentFrozen({
-        executions: [{ id: 'e-done', taskId: 't1', conversationId: 'conv-1', startedAt: 5, endedAt: 6, result: 'succeeded' }],
-        schedule: { enabled: true, mode: 'once', at: 1000, runCount: 0 },
       }),
     ).toBe(false)
   })

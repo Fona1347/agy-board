@@ -72,6 +72,8 @@ function summarizeTask(task: TaskRecord): Record<string, unknown> {
     worktreePath: task.worktreePath,
     worktreeBranch: task.worktreeBranch,
     tags: task.tags,
+    planRevision: task.planRevision,
+    hasUserNotes: Boolean(task.userNotes?.trim()),
     subgoalRollup: task.subgoalRollup,
     refCount: task.refs.length,
     commentCount: task.comments?.length ?? 0,
@@ -506,6 +508,7 @@ export function createBoardMcpServer(service: BoardService): McpServer {
             const hay = [
               task.title,
               task.description,
+              task.userNotes ?? '',
               task.workspaceLabel ?? '',
               task.workspacePath ?? '',
               task.freeze?.goal ?? '',
@@ -540,7 +543,7 @@ export function createBoardMcpServer(service: BoardService): McpServer {
     {
       title: 'Get Agy Board Task',
       description:
-        'Get full task details including freeze snapshot, subgoals, TaskSpace refs, comments, linked conversations, executions, and recent events.',
+        'Get full task details including human-exclusive userNotes (read-only for agents; treat as highest-priority override), concise description brief, full execution contract prompt, freeze snapshot, subgoals, TaskSpace refs, comments, linked conversations, executions (with per-round contractSnapshot), and recent events.',
       inputSchema: {
         taskId: z.string().min(1),
       },
@@ -633,11 +636,17 @@ export function createBoardMcpServer(service: BoardService): McpServer {
 
   server.tool(
     'board_create',
-    'Stage a new task on Agy Board. Agent-created cards default to todo/draft and wait for human approval; pass phase/subPhase to override. Include description, prompt, acceptance subgoals, refs, and origin provenance (discoveredFromTaskId/originSummary) so the human can review before dispatch.',
+    'Stage a new task on Agy Board. Agent-created cards default to todo/draft and wait for human approval; pass phase/subPhase to override. Put ONLY a 1–3 sentence human-readable brief (<=150 chars) in `description`; put the full execution contract/plan in `prompt` and `subgoals`. Human-exclusive `userNotes` cannot be set via MCP. Include refs and origin provenance (discoveredFromTaskId/originSummary) so the human can review before dispatch.',
     {
       title: z.string().min(1),
-      description: z.string().optional(),
-      prompt: z.string().optional(),
+      description: z
+        .string()
+        .describe('Concise 1–3 sentence human-readable brief summary (<=150 chars). Do NOT dump multi-paragraph plans here; put full plans in `prompt` and `subgoals`.')
+        .optional(),
+      prompt: z
+        .string()
+        .describe('Full Agent Execution Contract / implementation plan and first-round instructions (Markdown supported).')
+        .optional(),
       phase: z.enum(TASK_PHASES).optional(),
       subPhase: z.enum(['draft', 'ready', 'backlog']).optional(),
       priority: z.enum(TASK_PRIORITIES).optional(),
@@ -728,12 +737,18 @@ export function createBoardMcpServer(service: BoardService): McpServer {
 
   server.tool(
     'board_update',
-    'Update task metadata, workspace binding, dueAt, handover, mode, model, reasoningEffort, nextAction, priority, writeGate, tags, or freeze snapshot. Note: changing permission re-arms human confirmation in UI.',
+    'Update task metadata, concise `description` brief (1–3 sentences, <=150 chars), execution contract `prompt`, workspace binding, dueAt, handover, mode, model, reasoningEffort, nextAction, priority, writeGate, tags, or freeze snapshot. Human-exclusive `userNotes` is protected and CANNOT be modified via MCP (use `board_comment_add` to append agent progress). Note: changing permission re-arms human confirmation in UI.',
     {
       taskId: z.string().min(1),
       title: z.string().optional(),
-      description: z.string().optional(),
-      prompt: z.string().optional(),
+      description: z
+        .string()
+        .describe('Concise 1–3 sentence human-readable brief summary (<=150 chars); keep full plans in `prompt`.')
+        .optional(),
+      prompt: z
+        .string()
+        .describe('Full Agent Execution Contract / implementation plan (Markdown supported).')
+        .optional(),
       priority: z.enum(TASK_PRIORITIES).optional(),
       workspaceId: z.string().nullable().optional(),
       workspacePath: z.string().nullable().optional(),

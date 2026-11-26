@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  FileText,
   FolderGit2,
   GitBranch,
   GripVertical,
@@ -47,7 +48,6 @@ import { parseFreezeRequest } from '../../core/freeze.ts'
 import { requiresPermissionConfirmation } from '../../core/handover.ts'
 import {
   hasOpenExecution,
-  isTaskContentFrozen,
   type ConversationLink,
   type ConversationRole,
   type DiscoveredConversation,
@@ -334,7 +334,11 @@ export function TaskDetailView({
   const [titleDraft, setTitleDraft] = useState(initialTask.title)
   const [descDraft, setDescDraft] = useState(initialTask.description)
   const [descEditing, setDescEditing] = useState(!initialTask.description.trim())
+  const [userNotesDraft, setUserNotesDraft] = useState(initialTask.userNotes ?? '')
+  const [userNotesPreview, setUserNotesPreview] = useState(false)
   const [promptDraft, setPromptDraft] = useState(initialTask.prompt)
+  const [contractEditing, setContractEditing] = useState(!initialTask.prompt.trim())
+  const [contractExpanded, setContractExpanded] = useState(false)
   const [nextActionDraft, setNextActionDraft] = useState(initialTask.nextAction ?? '')
   const [dueAtDraft, setDueAtDraft] = useState(epochToDateTimeLocal(initialTask.dueAt))
   const [priorityDraft, setPriorityDraft] = useState<TaskPriority>(initialTask.priority)
@@ -396,6 +400,9 @@ export function TaskDetailView({
     setShowPasteBox(false)
     setFreezePaste('')
     setDescEditing(!initialTask.description.trim())
+    setUserNotesPreview(false)
+    setContractEditing(!initialTask.prompt.trim())
+    setContractExpanded(false)
     setShowFullNotes(false)
     setActiveTab('human')
     setBindConvId('')
@@ -412,6 +419,7 @@ export function TaskDetailView({
     if (ct.comments) setComments(ct.comments)
     setTitleDraft(initialTask.title)
     setDescDraft(initialTask.description)
+    setUserNotesDraft(initialTask.userNotes ?? '')
     setPromptDraft(initialTask.prompt)
     setNextActionDraft(initialTask.nextAction ?? '')
     setDueAtDraft(epochToDateTimeLocal(initialTask.dueAt))
@@ -454,7 +462,6 @@ export function TaskDetailView({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const needsPerm = requiresPermissionConfirmation(task, sessionDefaultPermission)
   const primaryConv = latestPrimaryConversation(task)
-  const contentFrozen = isTaskContentFrozen(task)
   const openExecution = hasOpenExecution(task)
   const sidecar = getSidecar()
   const folderChoices = useMemo(() => buildWorkspaceFolderChoices(workspaces), [workspaces])
@@ -602,12 +609,12 @@ export function TaskDetailView({
     if (workspacePathDraft.trim() !== (task.workspacePath ?? '')) {
       Object.assign(patch, resolveWorkspacePatchForDraft(workspacePathDraft))
     }
-    if (!contentFrozen) {
-      patch.title = titleDraft.trim() || task.title
-      patch.description = descDraft
-      patch.prompt = promptDraft
-    }
-    void runAction(() => boardApi.updateTask(task.id, patch), tr(locale, 'saveSuccess'))
+    patch.title = titleDraft.trim() || task.title
+    patch.description = descDraft
+    patch.userNotes = userNotesDraft
+    patch.prompt = promptDraft
+    const saveToast = openExecution ? tr(locale, 'savedNextRoundHint') : tr(locale, 'saveSuccess')
+    void runAction(() => boardApi.updateTask(task.id, patch), saveToast)
   }
 
   const handleDelete = async () => {
@@ -703,7 +710,7 @@ export function TaskDetailView({
       isDraft ||
       (task.phase === 'needs_you' && task.subPhase === 'review' && !needsPerm),
   )
-  const memoSourceText = contentFrozen ? task.description : descDraft
+  const memoSourceText = descDraft
   const memoInfo = useMemo(() => extractShortMemo(memoSourceText), [memoSourceText])
   const advancedBadges = [
     useWorktreeDraft || task.worktreePath ? 'Worktree' : null,
@@ -767,28 +774,18 @@ export function TaskDetailView({
             </button>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              {contentFrozen ? (
-                <div className="row-wrap" style={{ gap: 6 }}>
-                  <strong style={{ fontSize: 15, wordBreak: 'break-word' }}>{task.title}</strong>
-                  <span className="badge" title={tr(locale, 'frozenHint')}>
-                    <Lock size={10} />
-                    <span>{locale === 'zh' ? '已锁定' : 'FROZEN'}</span>
-                  </span>
-                </div>
-              ) : (
-                <input
-                  className="detail-title-input"
-                  aria-label={tr(locale, 'title')}
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleSaveDetails()
-                    }
-                  }}
-                />
-              )}
+              <input
+                className="detail-title-input"
+                aria-label={tr(locale, 'title')}
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSaveDetails()
+                  }
+                }}
+              />
             </div>
           </div>
 
@@ -1112,6 +1109,11 @@ export function TaskDetailView({
                 {task.discoveredFromTaskId ? ` · ${tr(locale, 'discoveredFrom')} ${task.discoveredFromTaskId.slice(0, 8)}` : ''}
               </div>
             )}
+            {task.userNotes?.trim() && (
+              <div>
+                <strong>{tr(locale, 'capsuleHumanNotes')}:</strong> {task.userNotes.trim()}
+              </div>
+            )}
             <div>
               <strong>{tr(locale, 'capsuleGoal')}:</strong> {task.title}
               {task.description.trim() ? ` — ${task.description.replace(/[#*`>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200)}` : ''}
@@ -1158,6 +1160,7 @@ export function TaskDetailView({
               className="btn btn-xs"
               onClick={() => {
                 const lines = [
+                  ...(task.userNotes?.trim() ? [`${tr(locale, 'capsuleHumanNotes')}: ${task.userNotes.trim()}`] : []),
                   `${tr(locale, 'capsuleGoal')}: ${task.title}`,
                   ...(task.description.trim() ? [task.description.trim()] : []),
                   ...task.conversations
@@ -1215,12 +1218,12 @@ export function TaskDetailView({
       <div className="drawer-body">
         {activeTab === 'human' ? (
           <>
-            {/* Zone 1: Quick Memo Board (<= 3 sentences distilled + expandable full Markdown) */}
+            {/* Zone 1A: Task Brief (1-3 sentence human-readable summary; extractShortMemo folds legacy over-long descriptions) */}
             <div className="detail-memo-card" data-testid="detail-memo-card">
               <div className="section-title">
                 <span className="row-wrap" style={{ gap: 6 }}>
                   <Sparkles size={13} style={{ color: 'var(--agy-primary-text)' }} />
-                  <span>{tr(locale, 'quickMemo')}</span>
+                  <span>{tr(locale, 'taskBrief')}</span>
                   {memoInfo.hasMore && (
                     <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--agy-muted-fg)' }}>
                       · {tr(locale, 'memoAutoDistilled')}
@@ -1228,15 +1231,13 @@ export function TaskDetailView({
                   )}
                 </span>
                 <div className="row-wrap">
-                  {!contentFrozen && (
-                    <button
-                      type="button"
-                      className="btn btn-xs btn-ghost"
-                      onClick={() => setDescEditing((v) => !v)}
-                    >
-                      {descEditing ? tr(locale, 'previewMode') : tr(locale, 'editMode')}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-ghost"
+                    onClick={() => setDescEditing((v) => !v)}
+                  >
+                    {descEditing ? tr(locale, 'previewMode') : tr(locale, 'editMode')}
+                  </button>
                   <button
                     type="button"
                     className="btn btn-xs btn-primary"
@@ -1248,7 +1249,7 @@ export function TaskDetailView({
                 </div>
               </div>
 
-              {contentFrozen || !descEditing ? (
+              {!descEditing ? (
                 <>
                   <div className="markdown-box" style={{ border: 'none', background: 'transparent', padding: 0 }}>
                     {memoSourceText.trim() ? (
@@ -1277,10 +1278,62 @@ export function TaskDetailView({
               ) : (
                 <textarea
                   className="textarea-field"
-                  rows={3}
+                  rows={2}
                   value={descDraft}
                   onChange={(e) => setDescDraft(e.target.value)}
-                  placeholder={tr(locale, 'notesPlaceholder')}
+                  placeholder={tr(locale, 'briefPlaceholder')}
+                />
+              )}
+            </div>
+
+            {/* Zone 1B: Human-Exclusive Never-Locked Notes & Alignment Control */}
+            <div className="detail-human-notes-card" data-testid="human-notes-card">
+              <div className="section-title">
+                <span className="row-wrap" style={{ gap: 6 }}>
+                  <User size={13} style={{ color: 'var(--agy-primary-text)' }} />
+                  <span>{tr(locale, 'humanNotesTitle')}</span>
+                  <span className="detail-ownership-pill">{tr(locale, 'humanNotesOwnershipHint')}</span>
+                </span>
+                <div className="row-wrap">
+                  {userNotesDraft.trim() && (
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-ghost"
+                      onClick={() => setUserNotesPreview((v) => !v)}
+                    >
+                      {userNotesPreview ? tr(locale, 'editMode') : tr(locale, 'previewMode')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-primary"
+                    disabled={busy}
+                    onClick={() => handleSaveDetails()}
+                  >
+                    {tr(locale, 'save')}
+                  </button>
+                </div>
+              </div>
+
+              {openExecution && (
+                <div className="detail-nonblocking-hint" data-testid="human-notes-running-hint">
+                  {tr(locale, 'editingWhileRunningHint')}
+                </div>
+              )}
+
+              {userNotesPreview && userNotesDraft.trim() ? (
+                <div className="markdown-box" style={{ border: 'none', background: 'transparent', padding: 0 }}>
+                  <MarkdownText content={userNotesDraft} />
+                </div>
+              ) : (
+                <textarea
+                  className="textarea-field"
+                  data-testid="human-notes-input"
+                  aria-label={tr(locale, 'humanNotesTitle')}
+                  rows={3}
+                  value={userNotesDraft}
+                  onChange={(e) => setUserNotesDraft(e.target.value)}
+                  placeholder={tr(locale, 'humanNotesPlaceholder')}
                 />
               )}
             </div>
@@ -1786,6 +1839,72 @@ export function TaskDetailView({
               </div>
             )}
 
+            {/* Tab 2 Zone 2: Agent Execution Contract / Task Plan (Markdown preview + expandable non-blocking editor) */}
+            <div className="detail-contract-card" data-testid="agent-contract-card">
+              <div className="section-title">
+                <span className="row-wrap" style={{ gap: 6 }}>
+                  <FileText size={13} style={{ color: 'var(--agy-primary-text)' }} />
+                  <span>{tr(locale, 'agentContractTitle')}</span>
+                  <span className="badge tabular-nums">rev #{task.planRevision}</span>
+                  {userNotesDraft.trim() && (
+                    <span className="detail-ownership-pill">{tr(locale, 'humanNotesActiveBadge')}</span>
+                  )}
+                </span>
+                <div className="row-wrap">
+                  {contractEditing && (
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-ghost"
+                      onClick={() => setContractExpanded((v) => !v)}
+                    >
+                      {contractExpanded ? tr(locale, 'collapseEditor') : tr(locale, 'expandEditor')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-ghost"
+                    onClick={() => setContractEditing((v) => !v)}
+                  >
+                    {contractEditing ? tr(locale, 'previewMode') : tr(locale, 'editMode')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-primary"
+                    disabled={busy}
+                    onClick={() => handleSaveDetails()}
+                  >
+                    {tr(locale, 'save')}
+                  </button>
+                </div>
+              </div>
+
+              {openExecution && (
+                <div className="detail-nonblocking-hint" data-testid="contract-running-hint">
+                  {tr(locale, 'editingWhileRunningHint')}
+                </div>
+              )}
+
+              {contractEditing ? (
+                <textarea
+                  className="textarea-field"
+                  data-testid="agent-contract-input"
+                  aria-label={tr(locale, 'agentContractTitle')}
+                  rows={contractExpanded ? 12 : 5}
+                  value={promptDraft}
+                  onChange={(e) => setPromptDraft(e.target.value)}
+                  placeholder={tr(locale, 'agentContractPlaceholder')}
+                />
+              ) : (
+                <div className="markdown-box" style={{ border: 'none', background: 'transparent', padding: 0 }}>
+                  {promptDraft.trim() ? (
+                    <MarkdownText content={promptDraft} />
+                  ) : (
+                    <span className="card-meta-line">{tr(locale, 'emptyNone')}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Workspace Binding inside Agent Environment */}
             <label className="form-label">
               <span>{tr(locale, 'workspace')}</span>
@@ -2147,17 +2266,6 @@ export function TaskDetailView({
                 <ChevronRight size={12} />
               </summary>
               <div className="fold-body">
-                <label className="form-label">
-                  <span>{tr(locale, 'prompt')}</span>
-                  <textarea
-                    className="textarea-field"
-                    rows={2}
-                    value={promptDraft}
-                    disabled={contentFrozen}
-                    onChange={(e) => setPromptDraft(e.target.value)}
-                  />
-                </label>
-
                 <label className="form-label">
                   <span>{tr(locale, 'nextAction')}</span>
                   <input
@@ -2678,6 +2786,9 @@ export function TaskDetailView({
                             >
                               {ex.result ?? 'running'}
                             </span>
+                            {ex.planRevision !== undefined && (
+                              <span className="badge tabular-nums">rev #{ex.planRevision}</span>
+                            )}
                             <span>{new Date(ex.startedAt).toLocaleString()}</span>
                           </span>
                           {ex.conversationId && (
@@ -2703,6 +2814,30 @@ export function TaskDetailView({
                           <div className="exec-summary">
                             <MarkdownText content={ex.summary} />
                           </div>
+                        )}
+                        {ex.contractSnapshot && (
+                          <details className="exec-subblock" style={{ marginTop: 4 }}>
+                            <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--agy-muted-fg)' }}>
+                              {tr(locale, 'contractSnapshot')} (rev #{ex.contractSnapshot.planRevision})
+                            </summary>
+                            <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11.5 }}>
+                              {ex.contractSnapshot.userNotes.trim() && (
+                                <div>
+                                  <strong>{tr(locale, 'humanNotesTitle')}:</strong> {ex.contractSnapshot.userNotes}
+                                </div>
+                              )}
+                              {ex.contractSnapshot.description.trim() && (
+                                <div>
+                                  <strong>{tr(locale, 'taskBrief')}:</strong> {ex.contractSnapshot.description}
+                                </div>
+                              )}
+                              {ex.contractSnapshot.prompt.trim() && (
+                                <pre className="code-preview" style={{ maxHeight: 120, margin: 0 }}>
+                                  {ex.contractSnapshot.prompt}
+                                </pre>
+                              )}
+                            </div>
+                          </details>
                         )}
                       </div>
                     ))}
