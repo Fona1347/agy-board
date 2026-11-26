@@ -459,5 +459,15 @@ describe('Antigravity 2.35+ conversation governance', () => {
     const protectedCleanup = (await cleanupRoute({})) as { archivedIds: string[] }
     expect(protectedCleanup.archivedIds).not.toContain('conv-origin-exec')
     expect(protectedCleanup.archivedIds).not.toContain('conv-ref-exec')
+
+    // 8. Force-closing a task with an open execution settles the execution and still auto-archives its conversation
+    archivedCalls.length = 0
+    const forceCloseTask = service.createTask({ title: 'Force accept & auto-archive' })
+    const forceDispatched = await service.dispatchTask(forceCloseTask.id, { mode: 'new' })
+    const forceClosed = service.transitionPhase(forceCloseTask.id, 'closed', { subPhase: 'done', force: true })
+    await service.flushConversationGovernance()
+    expect(forceClosed.executions[0]?.endedAt).toBeDefined()
+    expect(forceClosed.executions[0]?.result).toBe('succeeded')
+    expect(archivedCalls.map((c) => c.conversationId)).toEqual([forceDispatched.conversationId])
   })
 })

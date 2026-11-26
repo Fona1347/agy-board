@@ -1344,6 +1344,14 @@ export class BoardService {
       // Closing a recurring task is the explicit "finish and stop repeating"
       // path; acceptance rounds use completeScheduleCycle instead.
       if (reconciled.phase === 'closed') {
+        const settleResult: ExecutionOutcome = reconciled.subPhase === 'cancelled' ? 'cancelled' : 'succeeded'
+        this.db.db
+          .prepare(
+            `UPDATE task_executions
+             SET ended_at = ?, result = COALESCE(result, ?), summary = COALESCE(summary, ?)
+             WHERE task_id = ? AND ended_at IS NULL`,
+          )
+          .run(now, settleResult, `Task closed (${reconciled.subPhase})`, taskId)
         this.stopScheduleOnClose(taskId, task.schedule, now)
       }
 

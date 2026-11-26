@@ -141,10 +141,34 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
   const res = await fetcher(url, { ...init, headers })
   const text = await res.text()
-  const parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {}
+  let parsed: Record<string, unknown> = {}
+  let parseFailed = false
+  if (text.trim()) {
+    try {
+      const val = JSON.parse(text) as unknown
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        parsed = val as Record<string, unknown>
+      } else {
+        parseFailed = true
+      }
+    } catch {
+      parseFailed = true
+    }
+  }
   if (!res.ok || parsed.ok === false) {
-    const errMsg = typeof parsed.error === 'string' ? parsed.error : `Request failed (${res.status})`
-    throw new Error(errMsg)
+    if (typeof parsed.error === 'string' && parsed.error.trim()) {
+      throw new Error(parsed.error.trim())
+    }
+    if (res.status === 404 && parseFailed) {
+      throw new Error(
+        `API ${url} unavailable (404) — Sidecar backend is running an older build. Reload the agy-board plugin or restart Antigravity.`,
+      )
+    }
+    const snippet = parseFailed ? text.trim().slice(0, 160) : ''
+    throw new Error(snippet ? `Request failed (${res.status}): ${snippet}` : `Request failed (${res.status})`)
+  }
+  if (parseFailed) {
+    throw new Error(`Invalid JSON response from ${url}`)
   }
   return parsed as T
 }
