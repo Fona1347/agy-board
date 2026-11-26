@@ -1,167 +1,174 @@
 :root {
   color-scheme: dark;
+  /* Layer 1: Host-inherited base tokens (safe dark fallbacks for standalone browser) */
   --agy-bg: var(--background, #1C1C1A);
   --agy-fg: var(--foreground, #ddd9d0);
-  --agy-fg-strong: #f2efe9;
   --agy-card: var(--card, #282825);
-  --agy-card-elevated: #31312D;
-  --agy-card-hover: var(--secondary, #30302C);
-  --agy-muted: var(--muted, #161614);
-  --agy-muted-fg: var(--muted-foreground, #aba69d);
-  --agy-border: var(--border, rgba(255, 255, 255, 0.10));
-  --agy-border-strong: rgba(255, 255, 255, 0.20);
+  --agy-card-hover: var(--secondary, color-mix(in srgb, var(--agy-card) 92%, var(--agy-fg) 8%));
+  --agy-muted: var(--muted, color-mix(in srgb, var(--agy-bg) 86%, var(--agy-fg) 14%));
+  --agy-muted-fg: var(--muted-foreground, color-mix(in srgb, var(--agy-fg) 68%, var(--agy-bg) 32%));
+  --agy-border: var(--card-border, var(--border, color-mix(in srgb, var(--agy-fg) 12%, transparent)));
   --agy-primary: var(--primary, #D4894A);
-  --agy-primary-hover: #DF985B;
   --agy-primary-fg: var(--primary-foreground, #1e1913);
-  --agy-primary-text: var(--primary, #E2A269);
-  --agy-selection: rgba(212, 137, 74, 0.22);
 
-  --agy-danger: #ef4444;
-  --agy-danger-fg: #f87171;
-  --agy-danger-bg: rgba(239, 68, 68, 0.15);
-  --agy-danger-border: rgba(248, 113, 113, 0.40);
+  /* Layer 2: Derived surface, chrome, border & accent tokens (color-mix adapts to any host palette) */
+  --agy-fg-strong: color-mix(in srgb, var(--agy-fg) 88%, #ffffff 12%);
+  --agy-card-elevated: color-mix(in srgb, var(--agy-card) 92%, #ffffff 8%);
+  --agy-chrome-bg: var(--sidebar, color-mix(in srgb, var(--agy-bg) 78%, var(--agy-card) 22%));
+  --agy-recessed-bg: color-mix(in srgb, var(--agy-bg) 92%, #000000 8%);
+  --agy-border-strong: color-mix(in srgb, var(--agy-fg) 22%, transparent);
+  --agy-primary-hover: color-mix(in srgb, var(--agy-primary) 86%, #ffffff 14%);
+  --agy-primary-text: var(--agy-primary);
+  --agy-selection: color-mix(in srgb, var(--agy-primary) 24%, transparent);
+  --agy-code-bg: color-mix(in srgb, var(--agy-bg) 90%, #000000 10%);
+  --agy-code-fg: var(--code-foreground, var(--agy-fg));
 
-  --agy-amber: #F59E0B;
-  --agy-warn-fg: #FBBF24;
-  --agy-warn-bg: rgba(245, 158, 11, 0.14);
-  --agy-warn-border: rgba(245, 158, 11, 0.40);
+  /* Layer 3: Semantic status tokens (prefer host --error/--warning/--success/--link) */
+  --agy-danger: var(--error, #ef4444);
+  --agy-danger-fg: color-mix(in srgb, var(--agy-danger) 82%, #ffffff 18%);
+  --agy-danger-bg: color-mix(in srgb, var(--agy-danger) 15%, transparent);
+  --agy-danger-border: color-mix(in srgb, var(--agy-danger) 40%, transparent);
 
-  --agy-green: #22c55e;
-  --agy-ok-fg: #4ade80;
-  --agy-ok-bg: rgba(34, 197, 94, 0.14);
-  --agy-ok-border: rgba(74, 222, 128, 0.38);
+  --agy-amber: var(--warning, #F59E0B);
+  --agy-warn-fg: color-mix(in srgb, var(--agy-amber) 82%, #ffffff 18%);
+  --agy-warn-bg: color-mix(in srgb, var(--agy-amber) 14%, transparent);
+  --agy-warn-border: color-mix(in srgb, var(--agy-amber) 40%, transparent);
 
-  --agy-blue: #3b82f6;
-  --agy-active-fg: #7cb3f4;
-  --agy-active-bg: rgba(59, 130, 246, 0.15);
-  --agy-active-border: rgba(96, 165, 250, 0.42);
+  --agy-green: var(--success, #22c55e);
+  --agy-ok-fg: color-mix(in srgb, var(--agy-green) 80%, #ffffff 20%);
+  --agy-ok-bg: color-mix(in srgb, var(--agy-green) 14%, transparent);
+  --agy-ok-border: color-mix(in srgb, var(--agy-green) 38%, transparent);
 
-  /* Soft subtle semantic surface tokens (no full-card flood on task cards) */
-  --agy-tint-ok-bg: color-mix(in srgb, var(--agy-card) 92%, #22c55e 8%);
-  --agy-tint-ok-hover: color-mix(in srgb, var(--agy-card) 89%, #22c55e 11%);
-  --agy-tint-ok-border: rgba(74, 222, 128, 0.34);
-  --agy-tint-active-bg: color-mix(in srgb, var(--agy-card) 91%, #3b82f6 9%);
-  --agy-tint-active-hover: color-mix(in srgb, var(--agy-card) 88%, #3b82f6 12%);
-  --agy-tint-active-border: rgba(96, 165, 250, 0.38);
-  --agy-tint-danger-bg: color-mix(in srgb, var(--agy-card) 91%, #ef4444 9%);
-  --agy-tint-danger-hover: color-mix(in srgb, var(--agy-card) 88%, #ef4444 12%);
-  --agy-tint-danger-border: rgba(248, 113, 113, 0.38);
-  --agy-tint-warn-bg: color-mix(in srgb, var(--agy-card) 91%, #F59E0B 9%);
-  --agy-tint-warn-hover: color-mix(in srgb, var(--agy-card) 88%, #F59E0B 12%);
-  --agy-tint-warn-border: rgba(245, 158, 11, 0.38);
+  --agy-blue: var(--link, #3b82f6);
+  --agy-active-fg: color-mix(in srgb, var(--agy-blue) 78%, #ffffff 22%);
+  --agy-active-bg: color-mix(in srgb, var(--agy-blue) 15%, transparent);
+  --agy-active-border: color-mix(in srgb, var(--agy-blue) 42%, transparent);
 
-  --agy-code-bg: #161614;
-  --agy-code-fg: #ddd9d0;
-  --agy-chrome-bg: #222220;
-  --agy-recessed-bg: #161614;
+  /* Soft subtle semantic surface tokens derived from card + semantic hue */
+  --agy-tint-ok-bg: color-mix(in srgb, var(--agy-card) 92%, var(--agy-green) 8%);
+  --agy-tint-ok-hover: color-mix(in srgb, var(--agy-card) 89%, var(--agy-green) 11%);
+  --agy-tint-ok-border: color-mix(in srgb, var(--agy-ok-fg) 34%, transparent);
+  --agy-tint-active-bg: color-mix(in srgb, var(--agy-card) 91%, var(--agy-blue) 9%);
+  --agy-tint-active-hover: color-mix(in srgb, var(--agy-card) 88%, var(--agy-blue) 12%);
+  --agy-tint-active-border: color-mix(in srgb, var(--agy-active-fg) 38%, transparent);
+  --agy-tint-danger-bg: color-mix(in srgb, var(--agy-card) 91%, var(--agy-danger) 9%);
+  --agy-tint-danger-hover: color-mix(in srgb, var(--agy-card) 88%, var(--agy-danger) 12%);
+  --agy-tint-danger-border: color-mix(in srgb, var(--agy-danger-fg) 38%, transparent);
+  --agy-tint-warn-bg: color-mix(in srgb, var(--agy-card) 91%, var(--agy-amber) 9%);
+  --agy-tint-warn-hover: color-mix(in srgb, var(--agy-card) 88%, var(--agy-amber) 12%);
+  --agy-tint-warn-border: color-mix(in srgb, var(--agy-warn-fg) 38%, transparent);
+
   --agy-surface-shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
   --agy-focus-ring: 0 0 0 2px color-mix(in srgb, var(--agy-primary) 55%, transparent);
   --agy-radius: 10px;
 }
 
-/* Light theme semantic tokens */
+/* Light theme derived & semantic polarity */
 :root[data-theme='light'] {
   color-scheme: light;
-  --agy-fg-strong: #141210;
-  --agy-selection: rgba(180, 83, 9, 0.16);
+  --agy-fg-strong: color-mix(in srgb, var(--agy-fg) 88%, #000000 12%);
+  --agy-card-elevated: color-mix(in srgb, var(--agy-card) 94%, #ffffff 6%);
+  --agy-chrome-bg: var(--sidebar, color-mix(in srgb, var(--agy-bg) 95%, var(--agy-fg) 5%));
+  --agy-recessed-bg: color-mix(in srgb, var(--agy-bg) 94%, var(--agy-fg) 6%);
+  --agy-border-strong: color-mix(in srgb, var(--agy-fg) 19%, transparent);
+  --agy-primary-hover: color-mix(in srgb, var(--agy-primary) 86%, #000000 14%);
+  --agy-primary-text: color-mix(in srgb, var(--agy-primary) 88%, #000000 12%);
+  --agy-selection: color-mix(in srgb, var(--agy-primary) 16%, transparent);
+  --agy-code-bg: color-mix(in srgb, var(--agy-bg) 93%, var(--agy-fg) 7%);
+  --agy-code-fg: var(--code-foreground, var(--agy-fg));
 
-  --agy-danger: #dc2626;
-  --agy-danger-fg: #b91c1c;
-  --agy-danger-bg: rgba(220, 38, 38, 0.10);
-  --agy-danger-border: rgba(220, 38, 38, 0.34);
+  --agy-danger: var(--error, #dc2626);
+  --agy-danger-fg: color-mix(in srgb, var(--agy-danger) 84%, #000000 16%);
+  --agy-danger-bg: color-mix(in srgb, var(--agy-danger) 10%, transparent);
+  --agy-danger-border: color-mix(in srgb, var(--agy-danger) 34%, transparent);
 
-  --agy-amber: #D97706;
-  --agy-warn-fg: #B45309;
-  --agy-warn-bg: rgba(217, 119, 6, 0.11);
-  --agy-warn-border: rgba(217, 119, 6, 0.34);
+  --agy-amber: var(--warning, #D97706);
+  --agy-warn-fg: color-mix(in srgb, var(--agy-amber) 80%, #000000 20%);
+  --agy-warn-bg: color-mix(in srgb, var(--agy-amber) 11%, transparent);
+  --agy-warn-border: color-mix(in srgb, var(--agy-amber) 34%, transparent);
 
-  --agy-green: #16a34a;
-  --agy-ok-fg: #15803d;
-  --agy-ok-bg: rgba(22, 163, 74, 0.10);
-  --agy-ok-border: rgba(21, 128, 61, 0.34);
+  --agy-green: var(--success, #16a34a);
+  --agy-ok-fg: color-mix(in srgb, var(--agy-green) 82%, #000000 18%);
+  --agy-ok-bg: color-mix(in srgb, var(--agy-green) 10%, transparent);
+  --agy-ok-border: color-mix(in srgb, var(--agy-green) 34%, transparent);
 
-  --agy-blue: #2563eb;
-  --agy-active-fg: #1d4ed8;
-  --agy-active-bg: rgba(37, 99, 235, 0.10);
-  --agy-active-border: rgba(37, 99, 235, 0.34);
+  --agy-blue: var(--link, #2563eb);
+  --agy-active-fg: color-mix(in srgb, var(--agy-blue) 84%, #000000 16%);
+  --agy-active-bg: color-mix(in srgb, var(--agy-blue) 10%, transparent);
+  --agy-active-border: color-mix(in srgb, var(--agy-blue) 34%, transparent);
 
-  /* Soft subtle semantic surface tokens (Light #FFFFFF base) */
-  --agy-tint-ok-bg: color-mix(in srgb, var(--agy-card) 93%, #16a34a 7%);
-  --agy-tint-ok-hover: color-mix(in srgb, var(--agy-card) 90%, #16a34a 10%);
-  --agy-tint-ok-border: rgba(22, 163, 74, 0.34);
-  --agy-tint-active-bg: color-mix(in srgb, var(--agy-card) 93%, #2563eb 7%);
-  --agy-tint-active-hover: color-mix(in srgb, var(--agy-card) 90%, #2563eb 10%);
-  --agy-tint-active-border: rgba(37, 99, 235, 0.34);
-  --agy-tint-danger-bg: color-mix(in srgb, var(--agy-card) 93%, #dc2626 7%);
-  --agy-tint-danger-hover: color-mix(in srgb, var(--agy-card) 90%, #dc2626 10%);
-  --agy-tint-danger-border: rgba(220, 38, 38, 0.34);
-  --agy-tint-warn-bg: color-mix(in srgb, var(--agy-card) 93%, #D97706 7%);
-  --agy-tint-warn-hover: color-mix(in srgb, var(--agy-card) 90%, #D97706 10%);
-  --agy-tint-warn-border: rgba(217, 119, 6, 0.34);
+  --agy-tint-ok-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-green) 7%);
+  --agy-tint-ok-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-green) 10%);
+  --agy-tint-ok-border: color-mix(in srgb, var(--agy-ok-fg) 34%, transparent);
+  --agy-tint-active-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-blue) 7%);
+  --agy-tint-active-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-blue) 10%);
+  --agy-tint-active-border: color-mix(in srgb, var(--agy-active-fg) 34%, transparent);
+  --agy-tint-danger-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-danger) 7%);
+  --agy-tint-danger-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-danger) 10%);
+  --agy-tint-danger-border: color-mix(in srgb, var(--agy-danger-fg) 34%, transparent);
+  --agy-tint-warn-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-amber) 7%);
+  --agy-tint-warn-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-amber) 10%);
+  --agy-tint-warn-border: color-mix(in srgb, var(--agy-warn-fg) 34%, transparent);
 
-  --agy-primary-hover: #9A4A0B;
-  --agy-primary-text: #9A4A0B;
-  --agy-code-bg: #F1EFEA;
-  --agy-code-fg: #22201d;
-  --agy-chrome-bg: #EFECE6;
-  --agy-recessed-bg: #F1EFEA;
-  --agy-surface-shadow: 0 1px 2px rgba(20, 18, 16, 0.05);
+  --agy-surface-shadow: 0 1px 2px rgba(20, 18, 16, 0.06);
 }
 
+/* Host-following light base tokens (fallbacks stay light when any host var is absent) */
 :root[data-theme='light'][data-theme-source='host'] {
   color-scheme: light;
   --agy-bg: var(--background, #F7F6F3);
   --agy-fg: var(--foreground, #22201d);
-  --agy-fg-strong: #141210;
   --agy-card: var(--card, #FFFFFF);
-  --agy-card-elevated: #FFFFFF;
-  --agy-card-hover: var(--secondary, #F7F6F3);
-  --agy-muted: var(--muted, #F1EFEA);
-  --agy-muted-fg: var(--muted-foreground, #5f5a52);
-  --agy-border: var(--border, rgba(28, 25, 23, 0.09));
-  --agy-border-strong: rgba(28, 25, 23, 0.18);
+  --agy-card-hover: var(--secondary, color-mix(in srgb, var(--agy-card) 94%, var(--agy-fg) 6%));
+  --agy-muted: var(--muted, color-mix(in srgb, var(--agy-bg) 93%, var(--agy-fg) 7%));
+  --agy-muted-fg: var(--muted-foreground, color-mix(in srgb, var(--agy-fg) 64%, var(--agy-bg) 36%));
+  --agy-border: var(--card-border, var(--border, color-mix(in srgb, var(--agy-fg) 10%, transparent)));
   --agy-primary: var(--primary, #B45309);
-  --agy-primary-hover: #9A4A0B;
   --agy-primary-fg: var(--primary-foreground, #FFFFFF);
-  --agy-primary-text: #9A4A0B;
 }
 
+/* Explicit user override: Light (decoupled from dark host CSS variables) */
 :root[data-theme='light'][data-theme-source='user'] {
   color-scheme: light;
   --agy-bg: #F7F6F3;
   --agy-fg: #22201d;
-  --agy-fg-strong: #141210;
   --agy-card: #FFFFFF;
-  --agy-card-elevated: #FFFFFF;
   --agy-card-hover: #F7F6F3;
   --agy-muted: #F1EFEA;
   --agy-muted-fg: #5f5a52;
   --agy-border: rgba(28, 25, 23, 0.09);
-  --agy-border-strong: rgba(28, 25, 23, 0.18);
   --agy-primary: #B45309;
-  --agy-primary-hover: #9A4A0B;
   --agy-primary-fg: #FFFFFF;
-  --agy-primary-text: #9A4A0B;
+  --agy-chrome-bg: #EFECE6;
+  --agy-recessed-bg: #F1EFEA;
+  --agy-code-bg: #F1EFEA;
+  --agy-code-fg: #22201d;
+  --agy-danger: #dc2626;
+  --agy-amber: #D97706;
+  --agy-green: #16a34a;
+  --agy-blue: #2563eb;
 }
 
+/* Explicit user override: Dark (decoupled from light host CSS variables) */
 :root[data-theme='dark'][data-theme-source='user'] {
   color-scheme: dark;
   --agy-bg: #1C1C1A;
   --agy-fg: #ddd9d0;
-  --agy-fg-strong: #f2efe9;
   --agy-card: #282825;
-  --agy-card-elevated: #31312D;
   --agy-card-hover: #30302C;
   --agy-muted: #161614;
   --agy-muted-fg: #aba69d;
   --agy-border: rgba(255, 255, 255, 0.10);
-  --agy-border-strong: rgba(255, 255, 255, 0.20);
   --agy-primary: #D4894A;
-  --agy-primary-hover: #DF985B;
   --agy-primary-fg: #1e1913;
-  --agy-primary-text: #E2A269;
   --agy-chrome-bg: #222220;
   --agy-recessed-bg: #161614;
+  --agy-code-bg: #161614;
+  --agy-code-fg: #ddd9d0;
+  --agy-danger: #ef4444;
+  --agy-amber: #F59E0B;
+  --agy-green: #22c55e;
+  --agy-blue: #3b82f6;
 }
 
 @media (prefers-color-scheme: light) {
@@ -169,58 +176,59 @@
     color-scheme: light;
     --agy-bg: var(--background, #F7F6F3);
     --agy-fg: var(--foreground, #22201d);
-    --agy-fg-strong: #141210;
     --agy-card: var(--card, #FFFFFF);
-    --agy-card-elevated: #FFFFFF;
-    --agy-card-hover: var(--secondary, #F7F6F3);
-    --agy-muted: var(--muted, #F1EFEA);
-    --agy-muted-fg: var(--muted-foreground, #5f5a52);
-    --agy-border: var(--border, rgba(28, 25, 23, 0.09));
-    --agy-border-strong: rgba(28, 25, 23, 0.18);
+    --agy-card-hover: var(--secondary, color-mix(in srgb, var(--agy-card) 94%, var(--agy-fg) 6%));
+    --agy-muted: var(--muted, color-mix(in srgb, var(--agy-bg) 93%, var(--agy-fg) 7%));
+    --agy-muted-fg: var(--muted-foreground, color-mix(in srgb, var(--agy-fg) 64%, var(--agy-bg) 36%));
+    --agy-border: var(--card-border, var(--border, color-mix(in srgb, var(--agy-fg) 10%, transparent)));
     --agy-primary: var(--primary, #B45309);
-    --agy-primary-hover: #9A4A0B;
     --agy-primary-fg: var(--primary-foreground, #FFFFFF);
-    --agy-primary-text: #9A4A0B;
-    --agy-selection: rgba(180, 83, 9, 0.16);
 
-    --agy-danger: #dc2626;
-    --agy-danger-fg: #b91c1c;
-    --agy-danger-bg: rgba(220, 38, 38, 0.10);
-    --agy-danger-border: rgba(220, 38, 38, 0.34);
+    --agy-fg-strong: color-mix(in srgb, var(--agy-fg) 88%, #000000 12%);
+    --agy-card-elevated: color-mix(in srgb, var(--agy-card) 94%, #ffffff 6%);
+    --agy-chrome-bg: var(--sidebar, color-mix(in srgb, var(--agy-bg) 95%, var(--agy-fg) 5%));
+    --agy-recessed-bg: color-mix(in srgb, var(--agy-bg) 94%, var(--agy-fg) 6%);
+    --agy-border-strong: color-mix(in srgb, var(--agy-fg) 19%, transparent);
+    --agy-primary-hover: color-mix(in srgb, var(--agy-primary) 86%, #000000 14%);
+    --agy-primary-text: color-mix(in srgb, var(--agy-primary) 88%, #000000 12%);
+    --agy-selection: color-mix(in srgb, var(--agy-primary) 16%, transparent);
+    --agy-code-bg: color-mix(in srgb, var(--agy-bg) 93%, var(--agy-fg) 7%);
+    --agy-code-fg: var(--code-foreground, var(--agy-fg));
 
-    --agy-amber: #D97706;
-    --agy-warn-fg: #B45309;
-    --agy-warn-bg: rgba(217, 119, 6, 0.11);
-    --agy-warn-border: rgba(217, 119, 6, 0.34);
+    --agy-danger: var(--error, #dc2626);
+    --agy-danger-fg: color-mix(in srgb, var(--agy-danger) 84%, #000000 16%);
+    --agy-danger-bg: color-mix(in srgb, var(--agy-danger) 10%, transparent);
+    --agy-danger-border: color-mix(in srgb, var(--agy-danger) 34%, transparent);
 
-    --agy-green: #16a34a;
-    --agy-ok-fg: #15803d;
-    --agy-ok-bg: rgba(22, 163, 74, 0.10);
-    --agy-ok-border: rgba(21, 128, 61, 0.34);
+    --agy-amber: var(--warning, #D97706);
+    --agy-warn-fg: color-mix(in srgb, var(--agy-amber) 80%, #000000 20%);
+    --agy-warn-bg: color-mix(in srgb, var(--agy-amber) 11%, transparent);
+    --agy-warn-border: color-mix(in srgb, var(--agy-amber) 34%, transparent);
 
-    --agy-blue: #2563eb;
-    --agy-active-fg: #1d4ed8;
-    --agy-active-bg: rgba(37, 99, 235, 0.10);
-    --agy-active-border: rgba(37, 99, 235, 0.34);
+    --agy-green: var(--success, #16a34a);
+    --agy-ok-fg: color-mix(in srgb, var(--agy-green) 82%, #000000 18%);
+    --agy-ok-bg: color-mix(in srgb, var(--agy-green) 10%, transparent);
+    --agy-ok-border: color-mix(in srgb, var(--agy-green) 34%, transparent);
 
-    --agy-tint-ok-bg: color-mix(in srgb, var(--agy-card) 93%, #16a34a 7%);
-    --agy-tint-ok-hover: color-mix(in srgb, var(--agy-card) 90%, #16a34a 10%);
-    --agy-tint-ok-border: rgba(22, 163, 74, 0.34);
-    --agy-tint-active-bg: color-mix(in srgb, var(--agy-card) 93%, #2563eb 7%);
-    --agy-tint-active-hover: color-mix(in srgb, var(--agy-card) 90%, #2563eb 10%);
-    --agy-tint-active-border: rgba(37, 99, 235, 0.34);
-    --agy-tint-danger-bg: color-mix(in srgb, var(--agy-card) 93%, #dc2626 7%);
-    --agy-tint-danger-hover: color-mix(in srgb, var(--agy-card) 90%, #dc2626 10%);
-    --agy-tint-danger-border: rgba(220, 38, 38, 0.34);
-    --agy-tint-warn-bg: color-mix(in srgb, var(--agy-card) 93%, #D97706 7%);
-    --agy-tint-warn-hover: color-mix(in srgb, var(--agy-card) 90%, #D97706 10%);
-    --agy-tint-warn-border: rgba(217, 119, 6, 0.34);
+    --agy-blue: var(--link, #2563eb);
+    --agy-active-fg: color-mix(in srgb, var(--agy-blue) 84%, #000000 16%);
+    --agy-active-bg: color-mix(in srgb, var(--agy-blue) 10%, transparent);
+    --agy-active-border: color-mix(in srgb, var(--agy-blue) 34%, transparent);
 
-    --agy-code-bg: #F1EFEA;
-    --agy-code-fg: #22201d;
-    --agy-chrome-bg: #EFECE6;
-    --agy-recessed-bg: #F1EFEA;
-    --agy-surface-shadow: 0 1px 2px rgba(20, 18, 16, 0.05);
+    --agy-tint-ok-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-green) 7%);
+    --agy-tint-ok-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-green) 10%);
+    --agy-tint-ok-border: color-mix(in srgb, var(--agy-ok-fg) 34%, transparent);
+    --agy-tint-active-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-blue) 7%);
+    --agy-tint-active-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-blue) 10%);
+    --agy-tint-active-border: color-mix(in srgb, var(--agy-active-fg) 34%, transparent);
+    --agy-tint-danger-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-danger) 7%);
+    --agy-tint-danger-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-danger) 10%);
+    --agy-tint-danger-border: color-mix(in srgb, var(--agy-danger-fg) 34%, transparent);
+    --agy-tint-warn-bg: color-mix(in srgb, var(--agy-card) 93%, var(--agy-amber) 7%);
+    --agy-tint-warn-hover: color-mix(in srgb, var(--agy-card) 90%, var(--agy-amber) 10%);
+    --agy-tint-warn-border: color-mix(in srgb, var(--agy-warn-fg) 34%, transparent);
+
+    --agy-surface-shadow: 0 1px 2px rgba(20, 18, 16, 0.06);
   }
 }
 
