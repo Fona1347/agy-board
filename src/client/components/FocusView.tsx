@@ -220,26 +220,6 @@ export function FocusView({
             </div>
 
             <div className="focus-row-aside" onClick={(e) => e.stopPropagation()}>
-              {task.priority === 'urgent' && (
-                <span className="prio-chip is-urgent" title={locale === 'zh' ? '紧急' : 'Urgent'}>
-                  <ChevronsUp size={13} aria-hidden="true" />
-                </span>
-              )}
-              {task.priority === 'high' && (
-                <span className="prio-chip" title={locale === 'zh' ? '高优先级' : 'High priority'}>
-                  <ChevronUp size={13} aria-hidden="true" />
-                </span>
-              )}
-              <button
-                type="button"
-                className={`focus-pin-btn${isPinned ? ' is-pinned' : ''}`}
-                aria-label={isPinned ? (locale === 'zh' ? '取消星标' : 'Unstar') : (locale === 'zh' ? '星标置顶' : 'Star')}
-                title={isPinned ? tr(locale, 'unpinFromFocus') : tr(locale, 'pinToFocus')}
-                onClick={() => onTogglePin(task.id, !isPinned)}
-              >
-                <Star size={12} fill={isPinned ? 'currentColor' : 'none'} />
-              </button>
-
               {canSnooze && (
                 <div className="snooze-menu-wrap">
                   <button
@@ -292,6 +272,26 @@ export function FocusView({
                   {tr(locale, 'ignoreTask')}
                 </button>
               )}
+
+              {task.priority === 'urgent' && (
+                <span className="prio-chip is-urgent" title={locale === 'zh' ? '紧急' : 'Urgent'}>
+                  <ChevronsUp size={13} aria-hidden="true" />
+                </span>
+              )}
+              {task.priority === 'high' && (
+                <span className="prio-chip" title={locale === 'zh' ? '高优先级' : 'High priority'}>
+                  <ChevronUp size={13} aria-hidden="true" />
+                </span>
+              )}
+              <button
+                type="button"
+                className={`focus-pin-btn${isPinned ? ' is-pinned' : ''}`}
+                aria-label={isPinned ? (locale === 'zh' ? '取消星标' : 'Unstar') : (locale === 'zh' ? '星标置顶' : 'Star')}
+                title={isPinned ? tr(locale, 'unpinFromFocus') : tr(locale, 'pinToFocus')}
+                onClick={() => onTogglePin(task.id, !isPinned)}
+              >
+                <Star size={12} fill={isPinned ? 'currentColor' : 'none'} />
+              </button>
             </div>
           </div>
 

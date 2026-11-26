@@ -381,10 +381,112 @@
 }
 
 /* Responsive 360px Aux Pane safety */
+.board-shell.is-narrow .focus-timeline-row {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+
+.board-shell.is-narrow .ddl-rail {
+  padding: 9px 6px 9px 0;
+  gap: 5px;
+}
+
+.board-shell.is-narrow .focus-row-card,
+.board-shell.is-narrow .focus-row-plain {
+  padding: 8px 10px;
+  gap: 6px;
+}
+
+.board-shell.is-narrow .focus-row-main {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+
+.board-shell.is-narrow .focus-row-content {
+  gap: 7px;
+}
+
+.board-shell.is-narrow .focus-row-title {
+  font-size: 13px;
+  line-height: 1.38;
+}
+
 .board-shell.is-narrow .focus-row-aside {
+  width: 100%;
+  justify-content: flex-end;
   gap: 4px;
+  margin-top: 0;
+}
+
+.board-shell.is-narrow .focus-row-aside .focus-ignore-btn {
+  opacity: 0.72;
+  font-size: 11px;
+  padding: 1px 5px;
+}
+
+.board-shell.is-narrow .focus-row-aside .focus-ignore-btn:hover,
+.board-shell.is-narrow .focus-row-aside .focus-snooze-trigger.is-open {
+  opacity: 1;
+}
+
+.board-shell.is-narrow .inbox-actions-row {
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.board-shell.is-narrow .inbox-actions-btns {
+  gap: 5px;
 }
 
 .board-shell.is-narrow .quiet-pool-row {
   flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .focus-timeline-row {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+  .ddl-rail {
+    padding: 9px 6px 9px 0;
+    gap: 5px;
+  }
+  .focus-row-card,
+  .focus-row-plain {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .focus-row-main {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+  }
+  .focus-row-content {
+    gap: 7px;
+  }
+  .focus-row-title {
+    font-size: 13px;
+    line-height: 1.38;
+  }
+  .focus-row-aside {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 0;
+  }
+  .focus-row-aside .focus-ignore-btn {
+    opacity: 0.72;
+    font-size: 11px;
+    padding: 1px 5px;
+  }
+  .focus-row-aside .focus-ignore-btn:hover,
+  .focus-row-aside .focus-snooze-trigger.is-open {
+    opacity: 1;
+  }
+  .inbox-actions-row {
+    gap: 6px;
+    padding-top: 6px;
+  }
+  .inbox-actions-btns {
+    gap: 5px;
+  }
 }
