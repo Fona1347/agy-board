@@ -10,3 +10,7 @@ coverage/
 .env
 .env.*
 promo-video/
+dist/
+sidecars/board/server.mjs
+sidecars/board/public/
+.worktrees/
