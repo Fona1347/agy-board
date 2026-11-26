@@ -13,6 +13,7 @@ import {
   type CanonicalStatus,
   type ConversationLink,
   type ConversationRole,
+  type ExecutionContractSnapshot,
   type ExecutionOutcome,
   type ExecutionRecord,
   type ScheduleRule,
@@ -252,6 +253,16 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX IF NOT EXISTS task_conversations_handoff_idx ON task_conversations(task_id, include_in_handoff);
     `,
   },
+  {
+    // Human-exclusive never-locked notes + per-execution dispatch contract snapshot.
+    version: 5,
+    name: '0005_human_notes_contract_snapshot',
+    sql: `
+      ALTER TABLE tasks ADD COLUMN user_notes TEXT NOT NULL DEFAULT '';
+      ALTER TABLE task_executions ADD COLUMN plan_revision INTEGER;
+      ALTER TABLE task_executions ADD COLUMN contract_snapshot_json TEXT;
+    `,
+  },
 ]
 
 function parseJsonSafe<T>(raw: string | null | undefined, fallback: T): T {
@@ -330,6 +341,21 @@ export class BoardDatabase {
     }
     if (!cols.has('discovered_from_task_id')) {
       this.db.exec('ALTER TABLE tasks ADD COLUMN discovered_from_task_id TEXT;')
+    }
+    if (!cols.has('user_notes')) {
+      this.db.exec("ALTER TABLE tasks ADD COLUMN user_notes TEXT NOT NULL DEFAULT '';")
+    }
+  }
+
+  private ensureExecutionColumns(): void {
+    const cols = new Set(
+      (this.db.prepare('PRAGMA table_info(task_executions)').all() as Array<{ name: string }>).map((c) => c.name),
+    )
+    if (!cols.has('plan_revision')) {
+      this.db.exec('ALTER TABLE task_executions ADD COLUMN plan_revision INTEGER;')
+    }
+    if (!cols.has('contract_snapshot_json')) {
+      this.db.exec('ALTER TABLE task_executions ADD COLUMN contract_snapshot_json TEXT;')
     }
   }
 
@@ -421,6 +447,9 @@ export class BoardDatabase {
         } else if (m.version === 4) {
           this.ensureTaskColumns()
           this.ensureConversationColumns()
+        } else if (m.version === 5) {
+          this.ensureTaskColumns()
+          this.ensureExecutionColumns()
         } else {
           this.db.exec(m.sql)
         }
@@ -434,6 +463,7 @@ export class BoardDatabase {
     this.ensureTaskColumns()
     this.ensureUserMarksColumns()
     this.ensureConversationColumns()
+    this.ensureExecutionColumns()
     this.db.prepare("INSERT OR IGNORE INTO board_meta (key, value) VALUES ('revision', '1')").run()
   }
 
@@ -715,6 +745,11 @@ export class BoardDatabase {
         initiatedBy: r.initiated_by ? String(r.initiated_by) : undefined,
         reworkInstructions: r.rework_instructions ? String(r.rework_instructions) : undefined,
         frozenAt: typeof r.frozen_at === 'number' ? r.frozen_at : undefined,
+        planRevision: typeof r.plan_revision === 'number' ? r.plan_revision : undefined,
+        contractSnapshot: parseJsonSafe<ExecutionContractSnapshot | undefined>(
+          r.contract_snapshot_json as string | null,
+          undefined,
+        ),
       }
       const list = execsByTask.get(taskId) ?? []
       list.push(ex)
@@ -759,6 +794,7 @@ export class BoardDatabase {
         id,
         title: String(row.title),
         description: String(row.description ?? ''),
+        userNotes: String(row.user_notes ?? ''),
         prompt: String(row.prompt ?? ''),
         phase: reconciled.phase,
         subPhase: reconciled.subPhase,

@@ -13,7 +13,6 @@ import {
   BoardScheduler,
   BoardService,
   DefaultAgentBridge,
-  DomainError,
   SidecarOwner,
   cleanupTaskWorktree,
   ensureTaskWorktree,
@@ -188,8 +187,10 @@ describe('host/BoardService integration', () => {
     expect(launchedCalls[0].prompt).toContain('Context Freeze Snapshot')
     expect(dispatched.task.phase).toBe('active')
 
-    // Content freezes after execution opens
-    expect(() => service.updateTask(task.id, { title: 'Changed after run' })).toThrow(DomainError)
+    // Content stays editable during active execution while round-1 contract snapshot stays immutable
+    const editedWhileRunning = service.updateTask(task.id, { title: 'Changed after run' })
+    expect(editedWhileRunning.title).toBe('Changed after run')
+    expect(editedWhileRunning.executions[0]?.contractSnapshot?.title).toBe(task.title)
   })
 
   it('enforces human permission confirmation gate and re-arms on permission/handover change', async () => {

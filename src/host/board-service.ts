@@ -16,7 +16,6 @@ import {
   hasOpenExecution,
   isPathEqualOrInside,
   isRecurringSchedule,
-  isTaskContentFrozen,
   isTaskPermission,
   isTaskPhase,
   isTaskPriority,
@@ -41,6 +40,7 @@ import {
   type BoardSnapshot,
   type ConversationRole,
   type DiscoveredConversation,
+  type ExecutionContractSnapshot,
   type ExecutionOutcome,
   type FreezeSnapshot,
   type ScheduleAction,
@@ -110,6 +110,8 @@ export interface ScheduleInputSpec {
 export interface CreateTaskInput {
   title: string
   description?: string
+  /** Human-exclusive alignment notes (forbidden for MCP/hook sources). */
+  userNotes?: string
   prompt?: string
   phase?: TaskPhase
   subPhase?: TaskSubPhase
@@ -160,6 +162,8 @@ export interface CreateTaskInput {
 export interface UpdateTaskPatch {
   title?: string
   description?: string
+  /** Human-exclusive alignment notes (forbidden for MCP/hook sources). */
+  userNotes?: string
   prompt?: string
   priority?: TaskPriority
   workspaceId?: string | null
@@ -329,11 +333,14 @@ export class BoardService {
       if (task.nextAction) {
         lines.push(`- **Next Action**: ${task.nextAction}`)
       }
+      if (task.userNotes?.trim()) {
+        lines.push('', '## Human Notes (Owner Only · Highest Priority)', '', task.userNotes.trim())
+      }
       if (task.description.trim()) {
         lines.push('', '## Description', '', task.description.trim())
       }
       if (task.prompt.trim()) {
-        lines.push('', '## Prompt', '', task.prompt.trim())
+        lines.push('', '## Execution Contract / Prompt', '', task.prompt.trim())
       }
       if (task.freeze) {
         lines.push(
@@ -805,6 +812,12 @@ export class BoardService {
   createTask(input: CreateTaskInput, source: MutationSource = 'ui'): TaskRecord {
     const title = input.title?.trim() ?? ''
     if (!title) throw new DomainError('title-required', 'Task title must not be blank.')
+    if (input.userNotes !== undefined && (source === 'mcp' || source === 'hook')) {
+      throw new DomainError(
+        'user-notes-human-only',
+        'Human notes (userNotes) are exclusively controlled by the human user and cannot be set by agent MCP/hook calls.',
+      )
+    }
     const now = this.now()
     const id = randomUUID()
     const workspaces = this.listWorkspaces()
@@ -889,18 +902,19 @@ export class BoardService {
       this.db.db
         .prepare(
           `INSERT INTO tasks (
-            id, title, description, prompt, phase, sub_phase, status, priority,
+            id, title, description, user_notes, prompt, phase, sub_phase, status, priority,
             workspace_id, workspace_path, workspace_label, blocked_reason, next_action,
             due_at, reminder_at, sort_order, write_gate, mode, model, reasoning_effort,
             permission, permission_confirmed_at, reuse_session, use_worktree, freeze_json, handover_json,
             tags_json, schedule_json, plan_revision, created_at, updated_at, completed_at,
             created_by, origin_conversation_id, origin_summary, discovered_from_task_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
           title,
           input.description?.trim() ?? '',
+          input.userNotes?.trim() ?? '',
           input.prompt?.trim() ?? '',
           reconciled.phase,
           reconciled.subPhase,
@@ -1006,13 +1020,11 @@ export class BoardService {
     if (!task) throw new DomainError('task-not-found', `No task with id '${taskId}'.`)
     const now = this.now()
 
-    if (
-      isTaskContentFrozen(task) &&
-      (patch.title !== undefined || patch.description !== undefined || patch.prompt !== undefined)
-    ) {
+    // Human-exclusive notes are never locked for humans, and strictly protected from AI/MCP overwrites.
+    if (patch.userNotes !== undefined && (source === 'mcp' || source === 'hook')) {
       throw new DomainError(
-        'frozen-content',
-        'Title, description, and prompt freeze after execution begins; update freeze snapshot, nextAction, or send rework instructions instead.',
+        'user-notes-human-only',
+        'Human notes (userNotes) are exclusively controlled by the human user and cannot be overwritten by AI/MCP calls; use board_comment_add instead.',
       )
     }
 
@@ -1020,6 +1032,7 @@ export class BoardService {
     if (!nextTitle) throw new DomainError('title-required', 'Task title must not be blank.')
 
     const nextDescription = patch.description !== undefined ? patch.description.trim() : task.description
+    const nextUserNotes = patch.userNotes !== undefined ? patch.userNotes.trim() : (task.userNotes ?? '')
     const nextPrompt = patch.prompt !== undefined ? patch.prompt.trim() : task.prompt
     const nextPriority = patch.priority !== undefined ? (isTaskPriority(patch.priority) ? patch.priority : task.priority) : task.priority
 
@@ -1101,7 +1114,7 @@ export class BoardService {
       this.db.db
         .prepare(
           `UPDATE tasks SET
-            title = ?, description = ?, prompt = ?, priority = ?,
+            title = ?, description = ?, user_notes = ?, prompt = ?, priority = ?,
             workspace_id = ?, workspace_path = ?, workspace_label = ?,
             blocked_reason = ?, next_action = ?, due_at = ?, reminder_at = ?, reminded_at = ?,
             write_gate = ?, mode = ?, model = ?, reasoning_effort = ?,
@@ -1112,6 +1125,7 @@ export class BoardService {
         .run(
           nextTitle,
           nextDescription,
+          nextUserNotes,
           nextPrompt,
           nextPriority,
           wsId ?? null,
@@ -2174,6 +2188,46 @@ export class BoardService {
 
     const executionId = randomUUID()
     const startedAt = this.now()
+    const dispatchPlanRevision = latestTaskForPrompt.planRevision + 1
+    const promotedHandoff = latestTaskForPrompt.conversations
+      .filter((c) => c.includeInHandoff && c.summary?.trim())
+      .map((c) => ({
+        conversationId: c.conversationId,
+        role: c.role,
+        summary: c.summary!.trim(),
+      }))
+    const contractSnapshot: ExecutionContractSnapshot = {
+      planRevision: dispatchPlanRevision,
+      capturedAt: startedAt,
+      title: latestTaskForPrompt.title,
+      description: latestTaskForPrompt.description,
+      userNotes: latestTaskForPrompt.userNotes ?? '',
+      prompt: latestTaskForPrompt.prompt,
+      ...(latestTaskForPrompt.nextAction ? { nextAction: latestTaskForPrompt.nextAction } : {}),
+      ...(subgoal ? { subgoalId: subgoal.id } : {}),
+      subgoals: latestTaskForPrompt.subgoals.map((sg) => ({
+        id: sg.id,
+        title: sg.title,
+        required: sg.required,
+        status: sg.status,
+      })),
+      refs: latestTaskForPrompt.refs.map((r) => ({
+        kind: r.kind,
+        target: r.target,
+        ...(r.label ? { label: r.label } : {}),
+      })),
+      ...(promotedHandoff.length > 0 ? { handoffConclusions: promotedHandoff } : {}),
+      ...(latestTaskForPrompt.freeze
+        ? {
+            freeze: {
+              goal: latestTaskForPrompt.freeze.goal,
+              progress: latestTaskForPrompt.freeze.progress,
+              next: latestTaskForPrompt.freeze.next,
+            },
+          }
+        : {}),
+      dispatchedPrompt: promptText,
+    }
     const runGroupId = options.runGroupId ?? taskId
     const dispatchLockPath =
       this.db.dbPath && this.db.dbPath !== ':memory:'
@@ -2188,7 +2242,7 @@ export class BoardService {
       }
     }
 
-    // Record open execution immediately so concurrent requests cannot double-launch
+    // Record open execution immediately with an immutable dispatch Contract snapshot
     this.db.inTransaction(() => {
       const concurrentOpen = this.db.db
         .prepare('SELECT 1 FROM task_executions WHERE task_id = ? AND ended_at IS NULL LIMIT 1')
@@ -2206,8 +2260,10 @@ export class BoardService {
       const rec = reconcilePhaseStatus('active', 'running')
       this.db.db
         .prepare(
-          `INSERT INTO task_executions (id, task_id, subgoal_id, conversation_id, workspace_id, started_at, initiated_by, rework_instructions, frozen_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO task_executions (
+            id, task_id, subgoal_id, conversation_id, workspace_id, started_at,
+            initiated_by, rework_instructions, frozen_at, plan_revision, contract_snapshot_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           executionId,
@@ -2219,6 +2275,8 @@ export class BoardService {
           options.initiatedBy ?? source,
           action === 'rework' ? options.reworkInstructions!.trim() : null,
           task.freeze?.frozenAt ?? null,
+          dispatchPlanRevision,
+          JSON.stringify(contractSnapshot),
         )
 
       if (targetConvId) {
@@ -2233,9 +2291,9 @@ export class BoardService {
 
       this.db.db
         .prepare(
-          'UPDATE tasks SET phase = ?, sub_phase = ?, status = ?, blocked_reason = NULL, reasoning_effort = COALESCE(?, reasoning_effort), updated_at = ? WHERE id = ?',
+          'UPDATE tasks SET phase = ?, sub_phase = ?, status = ?, blocked_reason = NULL, reasoning_effort = COALESCE(?, reasoning_effort), plan_revision = ?, updated_at = ? WHERE id = ?',
         )
-        .run(rec.phase, rec.subPhase, rec.status, options.reasoningEffort?.trim() || null, startedAt, taskId)
+        .run(rec.phase, rec.subPhase, rec.status, options.reasoningEffort?.trim() || null, dispatchPlanRevision, startedAt, taskId)
 
       if (subgoal && subgoal.status === 'open') {
         this.db.db.prepare("UPDATE task_subgoals SET status = 'in_progress' WHERE id = ? AND task_id = ?").run(subgoal.id, taskId)

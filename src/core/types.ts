@@ -210,6 +210,35 @@ export interface ConversationLink {
 
 export type ExecutionOutcome = 'succeeded' | 'failed' | 'cancelled'
 
+export interface ExecutionContractSnapshot {
+  planRevision: number
+  capturedAt: number
+  title: string
+  description: string
+  userNotes: string
+  prompt: string
+  nextAction?: string
+  subgoalId?: string
+  subgoals: Array<{
+    id: string
+    title: string
+    required: boolean
+    status: SubgoalStatus
+  }>
+  refs: Array<{
+    kind: TaskRefKind
+    target: string
+    label?: string
+  }>
+  handoffConclusions?: Array<{
+    conversationId: string
+    role: ConversationRole
+    summary: string
+  }>
+  freeze?: FreezeSnapshot
+  dispatchedPrompt: string
+}
+
 export interface ExecutionRecord {
   id: string
   taskId: string
@@ -224,6 +253,8 @@ export interface ExecutionRecord {
   initiatedBy?: string
   reworkInstructions?: string
   frozenAt?: number
+  planRevision?: number
+  contractSnapshot?: ExecutionContractSnapshot
 }
 
 export interface TaskEventRecord {
@@ -305,7 +336,11 @@ export interface SubgoalRollup {
 export interface TaskRecord {
   id: string
   title: string
+  /** Concise 1-3 sentence brief summary (<=150 chars recommended). */
   description: string
+  /** Human-exclusive alignment notes & overrides. Never locked; AI/MCP forbidden from overwriting. */
+  userNotes?: string
+  /** Full Agent Execution Contract / implementation plan. */
   prompt: string
   phase: TaskPhase
   subPhase: TaskSubPhase
@@ -418,12 +453,13 @@ export function isRecurringSchedule(schedule?: Pick<ScheduleRule, 'mode'>): bool
 }
 
 /**
- * Content is locked only while an agent is actively running. Between rounds
- * humans may keep editing the prompt/description while the task sits in
- * `todo` / `needs_you` / `on_hold`; each dispatch records a fresh snapshot.
+ * Task content is never blocking-frozen: each dispatch captures an immutable
+ * `ExecutionContractSnapshot` on `task_executions` and increments `planRevision`.
+ * Kept exported for backward compatibility; use `hasOpenExecution(task)` when
+ * rendering a non-blocking "applies on next dispatch/rework" hint.
  */
 export function isTaskContentFrozen(
-  task: Pick<TaskRecord, 'executions'> & Partial<Pick<TaskRecord, 'freeze' | 'schedule'>>,
+  _task?: Pick<TaskRecord, 'executions'> & Partial<Pick<TaskRecord, 'freeze' | 'schedule'>>,
 ): boolean {
-  return hasOpenExecution(task)
+  return false
 }

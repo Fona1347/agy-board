@@ -9,9 +9,12 @@ Use `agy-board` MCP tools (`board_*`) whenever the user wants to track multi-ses
 
 ## Key Practices
 
-1. **Stage Drafts, Then Let a Human Approve**:
+1. **Stage Drafts with Clean 3-Layer Separation (Brief / Human Notes / Contract)**:
    - `board_create` from an agent lands in `todo/draft` (AI 草稿 · 待审); it cannot be dispatched until the human clicks `审校通过 → Ready`.
-   - Always include: `description` (background + constraints), `prompt` (first-round instruction), 1–3 acceptance `subgoals`, and key `refs`.
+   - **`description` (Task Brief)**: Keep strictly to **1–3 concise human-readable sentences (≤150 chars)**. Never dump multi-paragraph plans, checklists, or code blocks into `description`.
+   - **`prompt` + `subgoals` + `refs` (Agent Execution Contract)**: Put the complete implementation plan, constraints, acceptance subgoals (1–3 items), and key deliverable/reference pointers here.
+   - **`userNotes` (Human-Exclusive Notes & Alignment Overrides)**: 100% human-owned, never locked, and strictly forbidden for agents/MCP to overwrite. Always read `userNotes` as the **highest-priority alignment override** when present, and use `board_comment_add` to append agent progress updates instead.
+   - **Dispatch Snapshot Model**: Editing a task's title, brief, human notes, or contract is never blocking-frozen (even during active execution); each dispatch captures an immutable `contractSnapshot` on `task_executions` and increments `planRevision`, so edits made mid-run apply cleanly on the next dispatch or rework.
    - Record provenance: `discoveredFromTaskId` when the card came from another task, `originSummary` ("while checking X I noticed Y"), and `parentConversationId` for an untransferred `/btw` side chat so the link points to the mainline conversation.
 
 2. **Bind Every Task to a Workspace**:

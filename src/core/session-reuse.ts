@@ -73,26 +73,25 @@ export function buildDispatchPrompt(
   }
   sections.push(headerParts.join('\n'))
 
+  // 1. Human-exclusive alignment notes / override requirements (highest priority)
+  const humanNotes = task.userNotes?.trim()
+  if (humanNotes) {
+    sections.push(
+      [
+        '## Human Notes & Alignment Overrides (Highest Priority)',
+        '> Written directly by the human owner. Follow these requirements first if anything below conflicts.',
+        '',
+        humanNotes,
+      ].join('\n'),
+    )
+  }
+
+  // 2. Concise task brief
   if (task.description.trim()) {
     sections.push(`## Description\n${task.description.trim()}`)
   }
 
-  // Provenance from the conversation that spawned this card.
-  const provenance: string[] = []
-  if (task.originSummary?.trim()) provenance.push(`Why captured: ${task.originSummary.trim()}`)
-  if (task.originConversationId) provenance.push(`Origin conversation: ${task.originConversationId}`)
-  if (task.discoveredFromTaskId) provenance.push(`Discovered from task: ${task.discoveredFromTaskId}`)
-  if (provenance.length > 0) {
-    sections.push(`## Origin / Discovered From\n${provenance.join('\n')}`)
-  }
-
-  // ★ conversations explicitly promoted into the handoff capsule.
-  const handoffConvs = task.conversations.filter((c) => c.includeInHandoff && c.summary?.trim())
-  if (handoffConvs.length > 0) {
-    const lines = handoffConvs.map((c) => `- (${c.role}) ${c.conversationId}: ${c.summary!.trim()}`)
-    sections.push(`## Handoff Conclusions (★ included)\n${lines.join('\n')}`)
-  }
-
+  // 3. Execution Contract / Prompt
   const bodyPrompt = options.subgoal
     ? options.subgoal.detail.trim() || options.subgoal.title
     : task.prompt.trim() || task.title
@@ -106,17 +105,7 @@ export function buildDispatchPrompt(
     sections.push(`## Blocked / Status Note\n${task.blockedReason.trim()}`)
   }
 
-  if (task.freeze) {
-    sections.push(
-      [
-        '## Context Freeze Snapshot',
-        `Goal: ${task.freeze.goal}`,
-        `Progress: ${task.freeze.progress}`,
-        `Next: ${task.freeze.next}`,
-      ].join('\n'),
-    )
-  }
-
+  // 4. Subgoals & Handoff Capsule
   if (task.subgoals.length > 0) {
     const lines = task.subgoals.map((sg) => {
       const mark =
@@ -131,6 +120,33 @@ export function buildDispatchPrompt(
       return `- [${mark}] (${sg.id}) ${sg.title}${req}`
     })
     sections.push(`## Subgoals\n${lines.join('\n')}`)
+  }
+
+  // ★ conversations explicitly promoted into the handoff capsule.
+  const handoffConvs = task.conversations.filter((c) => c.includeInHandoff && c.summary?.trim())
+  if (handoffConvs.length > 0) {
+    const lines = handoffConvs.map((c) => `- (${c.role}) ${c.conversationId}: ${c.summary!.trim()}`)
+    sections.push(`## Handoff Conclusions (★ included)\n${lines.join('\n')}`)
+  }
+
+  if (task.freeze) {
+    sections.push(
+      [
+        '## Context Freeze Snapshot',
+        `Goal: ${task.freeze.goal}`,
+        `Progress: ${task.freeze.progress}`,
+        `Next: ${task.freeze.next}`,
+      ].join('\n'),
+    )
+  }
+
+  // Provenance from the conversation that spawned this card.
+  const provenance: string[] = []
+  if (task.originSummary?.trim()) provenance.push(`Why captured: ${task.originSummary.trim()}`)
+  if (task.originConversationId) provenance.push(`Origin conversation: ${task.originConversationId}`)
+  if (task.discoveredFromTaskId) provenance.push(`Discovered from task: ${task.discoveredFromTaskId}`)
+  if (provenance.length > 0) {
+    sections.push(`## Origin / Discovered From\n${provenance.join('\n')}`)
   }
 
   const settledHistory = task.executions
@@ -178,6 +194,7 @@ export function buildReworkPrompt(
   instructions: string,
   subgoal?: SubgoalRecord,
 ): string {
+  const humanNotes = task.userNotes?.trim()
   const lines = [
     `[Rework Request for Task ${task.id}: ${task.title}]`,
     ...(task.worktreePath
@@ -186,6 +203,9 @@ export function buildReworkPrompt(
         ]
       : []),
     ...(subgoal ? [`Subgoal (${subgoal.id}): ${subgoal.title}`] : []),
+    ...(humanNotes
+      ? ['', '## Human Notes & Alignment Overrides (Highest Priority)', humanNotes]
+      : []),
     '',
     instructions.trim(),
   ]
