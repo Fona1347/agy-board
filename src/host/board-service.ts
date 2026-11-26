@@ -37,6 +37,7 @@ import {
   sanitizeHandover,
   scheduleExhausted,
   type BatchTaskAction,
+  type BoardFocusRequest,
   type BoardSnapshot,
   type ConversationRole,
   type DiscoveredConversation,
@@ -228,12 +229,14 @@ export interface BoardServiceOptions {
   agentBridge?: AgentBridge
   now?: () => number
   onChanged?: (revision: number) => void
+  onFocusRequested?: (focus: BoardFocusRequest) => void
 }
 
 export const BOARD_CONVERSATION_TAG = 'agy-board'
 export const DEFAULT_CONVERSATION_TITLE_PREFIX = '[Board]'
 export const DEFAULT_CONVERSATION_GROUP_ID = 'agy-board'
 const CONVERSATION_GOVERNANCE_META_KEY = 'conversation_governance'
+export const FOCUS_REQUEST_META_KEY = 'focus_request'
 
 export interface ConversationGovernanceConfig {
   autoRename: boolean
@@ -349,6 +352,7 @@ export class BoardService {
   private maxConcurrentLaunches: number
   private readonly nowFn: () => number
   private readonly onChanged?: (revision: number) => void
+  private readonly onFocusRequested?: (focus: BoardFocusRequest) => void
   private readonly pendingGovernance = new Set<Promise<void>>()
 
   constructor(db: BoardDatabase, paths: HostPaths, options: BoardServiceOptions = {}) {
@@ -358,6 +362,7 @@ export class BoardService {
     this.maxConcurrentLaunches = Math.min(Math.max(options.maxConcurrentLaunches ?? 3, 1), 8)
     this.agentBridge = options.agentBridge ?? new DefaultAgentBridge(paths)
     this.nowFn = options.now ?? (() => Date.now())
+    this.onFocusRequested = options.onFocusRequested
     this.onChanged = options.onChanged
     this.admissionQueue = new LaunchAdmissionQueue(() => this.maxConcurrentLaunches)
   }
@@ -2118,6 +2123,54 @@ export class BoardService {
       this.notifyRevision()
     })
     return this.getTask(taskId)!
+  }
+
+  // --- Cross-process UI Focus Request (board_meta KV, zero schema migration) ---
+  getFocusRequest(): BoardFocusRequest | null {
+    try {
+      const row = this.db.db
+        .prepare('SELECT value FROM board_meta WHERE key = ?')
+        .get(FOCUS_REQUEST_META_KEY) as { value?: string } | undefined
+      if (!row?.value) return null
+      const parsed = JSON.parse(row.value) as Partial<BoardFocusRequest>
+      if (
+        typeof parsed.taskId === 'string' &&
+        parsed.taskId.trim() &&
+        typeof parsed.nonce === 'string' &&
+        parsed.nonce.trim() &&
+        typeof parsed.ts === 'number' &&
+        Number.isFinite(parsed.ts)
+      ) {
+        return {
+          taskId: parsed.taskId.trim(),
+          nonce: parsed.nonce.trim(),
+          ts: parsed.ts,
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  requestFocusTask(taskId: string): BoardFocusRequest {
+    const cleanId = taskId.trim()
+    if (!cleanId) throw new DomainError('task-not-found', 'taskId is required.')
+    const task = this.getTask(cleanId)
+    if (!task) throw new DomainError('task-not-found', `No task with id '${cleanId}'.`)
+    const focus: BoardFocusRequest = {
+      taskId: task.id,
+      nonce: randomUUID(),
+      ts: this.nowFn(),
+    }
+    this.db.db
+      .prepare(
+        `INSERT INTO board_meta (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(FOCUS_REQUEST_META_KEY, JSON.stringify(focus))
+    this.onFocusRequested?.(focus)
+    return focus
   }
 
   // --- Conversation Governance (Antigravity 2.35+ ConversationService) ---

@@ -458,6 +458,12 @@ export function isRecurringSchedule(schedule?: Pick<ScheduleRule, 'mode'>): bool
  * Kept exported for backward compatibility; use `hasOpenExecution(task)` when
  * rendering a non-blocking "applies on next dispatch/rework" hint.
  */
+export interface BoardFocusRequest {
+  taskId: string
+  nonce: string
+  ts: number
+}
+
 export function isTaskContentFrozen(
   _task?: Pick<TaskRecord, 'executions'> & Partial<Pick<TaskRecord, 'freeze' | 'schedule'>>,
 ): boolean {

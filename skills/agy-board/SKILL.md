@@ -34,5 +34,9 @@ Use `agy-board` MCP tools (`board_*`) whenever the user wants to track multi-ses
 6. **Permission Confirmation Safety**:
    - Elevated permissions (`workspace-write` / `danger-full-access` above session default) require human confirmation inside the Agy Board UI (`Confirm Elevated Permission`). Never try to bypass the gate.
 
-7. **Aux Pane Pill**:
-   - When the user asks to view or open the board UI, you may emit `[Agy Board](sidecar://agy-board/board/)` if the `agy-board` plugin is enabled.
+7. **Aux Pane Navigation Pill & Precision Focus**:
+   - Inline MCP App task cards (`board_create`, `board_get`, `board_card`, `board_list`) collapse under `Worked for ...` once a turn finishes. Therefore, whenever you **create or update** tasks on Agy Board (and the `agy-board` plugin is enabled/running), attach **one** clickable navigation pill at the end of your final response:
+     `[Agy Board](sidecar://agy-board/board/)`
+   - Do not repeat multiple pills to the same view in a single reply, and omit the pill if the plugin is not enabled/running.
+   - Inside the inline MCP App card, clicking **「在右侧看板查看」** or **「去看板审校 → Ready」** triggers `board_card({ taskId, focusInBoard: true })`, which writes a cross-process focus signal (`board_meta.focus_request`) so the right-hand Agy Board automatically opens that exact task's detail drawer (both via Sidecar `/api/revision` polling and Standalone SSE). Opening the board with `?taskId=<id>` also opens the target task drawer directly.
+   - Draft approval (`todo/draft → ready`) remains a human gate: never attempt to bypass it via MCP; guide the user to click **「审校通过 → Ready」** inside the Agy Board sidebar.

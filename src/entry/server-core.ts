@@ -113,11 +113,25 @@ export async function startStandaloneServer(options: {
   const db = new BoardDatabase(paths.dbPath)
   const sseClients = new Set<ServerResponse>()
   let lastBroadcastRevision = db.getRevision()
+  let lastBroadcastFocusNonce: string | null = null
 
   const broadcastRevision = (rev: number) => {
     if (rev === lastBroadcastRevision) return
     lastBroadcastRevision = rev
     const payload = `event: revision\ndata: ${JSON.stringify({ revision: rev })}\n\n`
+    for (const res of sseClients) {
+      try {
+        res.write(payload)
+      } catch {
+        sseClients.delete(res)
+      }
+    }
+  }
+
+  const broadcastFocus = (focus: { taskId: string; nonce: string; ts: number } | null) => {
+    if (!focus || focus.nonce === lastBroadcastFocusNonce) return
+    lastBroadcastFocusNonce = focus.nonce
+    const payload = `event: focus\ndata: ${JSON.stringify(focus)}\n\n`
     for (const res of sseClients) {
       try {
         res.write(payload)
@@ -133,15 +147,24 @@ export async function startStandaloneServer(options: {
       options.boardOptions?.onChanged?.(rev)
       broadcastRevision(rev)
     },
+    onFocusRequested: (focus) => {
+      options.boardOptions?.onFocusRequested?.(focus)
+      broadcastFocus(focus)
+    },
   })
+  lastBroadcastFocusNonce = service.getFocusRequest()?.nonce ?? null
   const scheduler = new BoardScheduler(service, options.schedulerIntervalMs ?? 15_000)
   scheduler.start()
 
-  // Poll SQLite revision every 900ms so cross-process MCP/Hook updates reach SSE clients cleanly
+  // Poll SQLite revision & focus_request every 900ms so cross-process MCP/Hook updates reach SSE clients cleanly
   const revPollTimer = setInterval(() => {
     try {
       const current = db.getRevision()
       if (current !== lastBroadcastRevision) broadcastRevision(current)
+      const currentFocus = service.getFocusRequest()
+      if (currentFocus && currentFocus.nonce !== lastBroadcastFocusNonce) {
+        broadcastFocus(currentFocus)
+      }
     } catch {
       // ignore transient poll error
     }
