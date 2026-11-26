@@ -211,12 +211,49 @@ export function deleteCustomWorkspace(
   return { ok: true }
 }
 
+export interface ReadRecentConversationsOptions {
+  limit?: number
+  offset?: number
+  projectId?: string
+  workspacePath?: string
+  query?: string
+}
+
+export interface ReadRecentConversationsResult {
+  available: boolean
+  conversations: DiscoveredConversation[]
+  hasMore: boolean
+}
+
+const DEFAULT_CONVERSATION_LIMIT = 200
+const MAX_CONVERSATION_LIMIT = 5000
+
+function matchesConversationFilters(
+  conv: DiscoveredConversation,
+  options: { projectId?: string; workspacePath?: string; targetPathKey: string; query: string },
+): boolean {
+  if (options.projectId && conv.projectId !== options.projectId) {
+    if (!options.targetPathKey) return false
+  }
+  if (options.workspacePath) {
+    const matchesPath = conv.workspacePaths.some(
+      (p) => isPathEqualOrInside(p, options.workspacePath!) || isPathEqualOrInside(options.workspacePath!, p),
+    )
+    if (!matchesPath && (!options.projectId || conv.projectId !== options.projectId)) return false
+  }
+  if (options.query) {
+    const haystack = `${conv.title}\n${conv.preview}\n${conv.conversationId}`.toLowerCase()
+    if (!haystack.includes(options.query)) return false
+  }
+  return true
+}
+
 export function readRecentConversations(
   paths: HostPaths,
-  options: { limit?: number; projectId?: string; workspacePath?: string } = {},
-): { available: boolean; conversations: DiscoveredConversation[] } {
+  options: ReadRecentConversationsOptions = {},
+): ReadRecentConversationsResult {
   if (!existsSync(paths.conversationSummariesDb)) {
-    return { available: false, conversations: [] }
+    return { available: false, conversations: [], hasMore: false }
   }
   let db: DatabaseSync | undefined
   try {
@@ -224,42 +261,63 @@ export function readRecentConversations(
     const cols = summarizeCols(db)
     const hasNotFullyIdle = cols.has('not_fully_idle')
     const selectIdleCol = hasNotFullyIdle ? ', not_fully_idle' : ''
-    const limit = Math.min(Math.max(options.limit ?? 80, 1), 300)
-    const hasFilter = Boolean(options.projectId || options.workspacePath)
-    const fetchLimit = hasFilter ? Math.max(limit * 10, 1000) : limit
-    const rows = db
-      .prepare(
-        `SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status, project_id${selectIdleCol}
+    const rawLimit = typeof options.limit === 'number' && Number.isFinite(options.limit) ? options.limit : DEFAULT_CONVERSATION_LIMIT
+    const limit = Math.min(Math.max(Math.floor(rawLimit), 1), MAX_CONVERSATION_LIMIT)
+    const offset =
+      typeof options.offset === 'number' && Number.isFinite(options.offset)
+        ? Math.max(Math.floor(options.offset), 0)
+        : 0
+    const query = options.query?.trim().toLowerCase() ?? ''
+    const targetPathKey = options.workspacePath ? pathComparisonKey(options.workspacePath) : ''
+    const hasFilter = Boolean(options.projectId || options.workspacePath || query)
+    const baseSql = `SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris, status, project_id${selectIdleCol}
          FROM conversation_summaries
          WHERE COALESCE(parent_conversation_id, '') = '' AND COALESCE(killed, 0) = 0
-         ORDER BY last_modified_time DESC
-         LIMIT ?`,
-      )
-      .all(fetchLimit) as Array<Record<string, unknown>>
+         ORDER BY last_modified_time DESC`
 
-    const targetPathKey = options.workspacePath ? pathComparisonKey(options.workspacePath) : ''
     const conversations: DiscoveredConversation[] = []
+    let hasMore = false
 
-    for (const row of rows) {
-      const conv = rowToConversation(row, hasNotFullyIdle)
-
-      if (options.projectId && conv.projectId !== options.projectId) {
-        if (!targetPathKey) continue
+    if (!hasFilter && offset === 0) {
+      const rows = db.prepare(`${baseSql} LIMIT ?`).all(limit + 1) as Array<Record<string, unknown>>
+      hasMore = rows.length > limit
+      for (const row of rows.slice(0, limit)) {
+        conversations.push(rowToConversation(row, hasNotFullyIdle))
       }
-      if (options.workspacePath) {
-        const matchesPath = conv.workspacePaths.some(
-          (p) => isPathEqualOrInside(p, options.workspacePath!) || isPathEqualOrInside(options.workspacePath!, p),
-        )
-        if (!matchesPath && (!options.projectId || conv.projectId !== options.projectId)) continue
-      }
-
-      conversations.push(conv)
-      if (conversations.length >= limit) break
+      return { available: true, conversations, hasMore }
     }
 
-    return { available: true, conversations }
+    // Stream full history when filtering by workspace/query or paginating so older workspace chats are never truncated.
+    let matched = 0
+    const stmt = db.prepare(baseSql)
+    for (const rawRow of stmt.iterate() as IterableIterator<Record<string, unknown>>) {
+      const conv = rowToConversation(rawRow, hasNotFullyIdle)
+      if (
+        !matchesConversationFilters(conv, {
+          projectId: options.projectId,
+          workspacePath: options.workspacePath,
+          targetPathKey,
+          query,
+        })
+      ) {
+        continue
+      }
+      if (matched < offset) {
+        matched += 1
+        continue
+      }
+      if (conversations.length < limit) {
+        conversations.push(conv)
+        matched += 1
+        continue
+      }
+      hasMore = true
+      break
+    }
+
+    return { available: true, conversations, hasMore }
   } catch {
-    return { available: false, conversations: [] }
+    return { available: false, conversations: [], hasMore: false }
   } finally {
     try {
       db?.close()

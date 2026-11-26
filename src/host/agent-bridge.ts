@@ -10,6 +10,7 @@ import { request as httpsRequest } from 'node:https'
 import { connect as netConnect } from 'node:net'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { fileUriToPath, isPathEqualOrInside, normalizeFsPath, type DiscoveredConversation } from '../core/index.ts'
 import { resolveDevToolsPortFileCandidates, type HostPaths } from './paths.ts'
 
 export const SAFE_CONVERSATION_ID_RE = /^[A-Za-z0-9_-]{4,120}$/
@@ -46,6 +47,170 @@ export interface UpdateConversationAnnotations {
   starred?: boolean
   tags?: string[]
   conversationGroupId?: string
+}
+
+export interface PaginatedConversationsOptions {
+  projectId?: string
+  workspacePath?: string
+  query?: string
+  limit?: number
+  offset?: number
+  pageSize?: number
+  includeArchived?: boolean
+  maxPages?: number
+}
+
+export function normalizeListedConversation(raw: unknown): DiscoveredConversation | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const rec = raw as Record<string, unknown>
+  const metadata =
+    rec.metadata && typeof rec.metadata === 'object' && !Array.isArray(rec.metadata)
+      ? (rec.metadata as Record<string, unknown>)
+      : undefined
+  const annotations =
+    rec.annotations && typeof rec.annotations === 'object' && !Array.isArray(rec.annotations)
+      ? (rec.annotations as Record<string, unknown>)
+      : undefined
+  const state =
+    rec.state && typeof rec.state === 'object' && !Array.isArray(rec.state)
+      ? (rec.state as Record<string, unknown>)
+      : undefined
+
+  const conversationId = String(rec.conversationId ?? rec.conversation_id ?? rec.id ?? '').trim()
+  if (!conversationId) return null
+  const parentId = String(
+    rec.parentConversationId ??
+      rec.parent_conversation_id ??
+      metadata?.parentConversationId ??
+      metadata?.parent_conversation_id ??
+      '',
+  ).trim()
+  if (parentId) return null
+  if (rec.killed === true || rec.killed === 1) return null
+
+  const urisRaw = rec.workspaceUris ?? rec.workspace_uris ?? metadata?.workspaceUris ?? metadata?.workspace_uris
+  const workspacePaths: string[] = []
+  if (Array.isArray(urisRaw)) {
+    for (const u of urisRaw) {
+      if (typeof u === 'string' && u.trim()) {
+        const normalized = normalizeFsPath(fileUriToPath(u))
+        if (normalized) workspacePaths.push(normalized)
+      }
+    }
+  }
+  const singleWsPath = rec.workspacePath ?? rec.workspace_path ?? metadata?.workspacePath ?? metadata?.workspace_path
+  if (typeof singleWsPath === 'string' && singleWsPath.trim()) {
+    const normalized = normalizeFsPath(fileUriToPath(singleWsPath))
+    if (normalized && !workspacePaths.includes(normalized)) workspacePaths.push(normalized)
+  }
+
+  const status = String(rec.status ?? state?.runState ?? state?.run_state ?? '')
+  const notFullyIdle = Boolean(rec.notFullyIdle ?? rec.not_fully_idle)
+  const isIdle = status
+    ? (status === 'CASCADE_RUN_STATUS_IDLE' || status === 'RUN_STATE_IDLE') && !notFullyIdle
+    : true
+  const rawTime =
+    rec.lastModifiedTime ??
+    rec.last_modified_time ??
+    rec.updatedAt ??
+    rec.updated_at ??
+    rec.lastModifiedAt ??
+    state?.updateTime ??
+    state?.update_time ??
+    metadata?.createTime ??
+    metadata?.create_time
+  const parsedTime =
+    typeof rawTime === 'number' && Number.isFinite(rawTime)
+      ? rawTime
+      : typeof rawTime === 'string'
+        ? Date.parse(rawTime)
+        : 0
+
+  const title =
+    String(rec.title ?? annotations?.title ?? state?.summary ?? '').trim() || '(Untitled conversation)'
+  const preview = String(rec.preview ?? rec.summary ?? state?.summary ?? '').slice(0, 160)
+  const projectId = String(rec.projectId ?? rec.project_id ?? metadata?.projectId ?? metadata?.project_id ?? '')
+
+  return {
+    conversationId,
+    title,
+    preview,
+    projectId,
+    workspacePaths,
+    status,
+    isIdle,
+    stepCount: Number(rec.stepCount ?? rec.step_count ?? 0),
+    lastModifiedAt: Number.isFinite(parsedTime) ? parsedTime : 0,
+  }
+}
+
+export async function fetchPaginatedConversationsFromBridge(
+  bridge: Pick<AgentBridge, 'listConversations'>,
+  options: PaginatedConversationsOptions = {},
+): Promise<{ conversations: DiscoveredConversation[]; hasMore: boolean }> {
+  if (typeof bridge.listConversations !== 'function') {
+    return { conversations: [], hasMore: false }
+  }
+  const limit = Math.min(Math.max(Math.floor(options.limit ?? 200), 1), 5000)
+  const offset = Math.max(Math.floor(options.offset ?? 0), 0)
+  const pageSize = Math.min(Math.max(Math.floor(options.pageSize ?? 200), 1), 500)
+  const maxPages = Math.min(Math.max(Math.floor(options.maxPages ?? 20), 1), 100)
+  const query = options.query?.trim().toLowerCase() ?? ''
+
+  const byId = new Map<string, DiscoveredConversation>()
+  const seenTokens = new Set<string>()
+  let pageToken: string | undefined
+  let exhausted = true
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const res = await bridge.listConversations({
+      pageSize,
+      ...(pageToken ? { pageToken } : {}),
+      ...(options.projectId ? { projectId: options.projectId } : {}),
+      ...(options.includeArchived !== undefined ? { includeArchived: options.includeArchived } : {}),
+    })
+    const listRaw = res.conversations ?? res.items ?? res.summaries
+    const items = Array.isArray(listRaw) ? listRaw : []
+    for (const item of items) {
+      const normalized = normalizeListedConversation(item)
+      if (!normalized) continue
+      if (options.workspacePath) {
+        const matchesPath = normalized.workspacePaths.some(
+          (p) => isPathEqualOrInside(p, options.workspacePath!) || isPathEqualOrInside(options.workspacePath!, p),
+        )
+        if (!matchesPath && (!options.projectId || normalized.projectId !== options.projectId)) continue
+      } else if (options.projectId && normalized.projectId !== options.projectId) {
+        continue
+      }
+      if (query) {
+        const hay = `${normalized.title}\n${normalized.preview}\n${normalized.conversationId}`.toLowerCase()
+        if (!hay.includes(query)) continue
+      }
+      if (!byId.has(normalized.conversationId)) {
+        byId.set(normalized.conversationId, normalized)
+      }
+    }
+    const nextTokenRaw = res.nextPageToken ?? res.next_page_token
+    const nextToken = typeof nextTokenRaw === 'string' ? nextTokenRaw.trim() : ''
+    if (!nextToken || seenTokens.has(nextToken) || items.length === 0) {
+      exhausted = true
+      break
+    }
+    seenTokens.add(nextToken)
+    pageToken = nextToken
+    if (byId.size >= offset + limit + 1) {
+      exhausted = false
+      break
+    }
+    if (page === maxPages - 1) {
+      exhausted = false
+    }
+  }
+
+  const sorted = [...byId.values()].sort((a, b) => b.lastModifiedAt - a.lastModifiedAt)
+  const sliced = sorted.slice(offset, offset + limit)
+  const hasMore = sorted.length > offset + limit || !exhausted
+  return { conversations: sliced, hasMore }
 }
 
 export interface AgentLaunchResult {
@@ -871,6 +1036,13 @@ export class DefaultAgentBridge implements AgentBridge {
     if (req.tags !== undefined) body.tags = req.tags
     if (req.includeArchived !== undefined) body.includeArchived = req.includeArchived
     return this.callConversationService('ListConversations', body, 5_000)
+  }
+
+  async listAllConversations(options: PaginatedConversationsOptions = {}): Promise<{
+    conversations: DiscoveredConversation[]
+    hasMore: boolean
+  }> {
+    return fetchPaginatedConversationsFromBridge(this, options)
   }
 
   async updateConversation(

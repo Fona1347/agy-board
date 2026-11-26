@@ -71,6 +71,7 @@ import {
 import {
   DefaultAgentBridge,
   SAFE_CONVERSATION_ID_RE,
+  fetchPaginatedConversationsFromBridge,
   type AgentBridge,
   type UpdateConversationAnnotations,
 } from './agent-bridge.ts'
@@ -85,6 +86,8 @@ import {
   readRecentConversations,
   resolveConversationLineage,
   updateCustomWorkspace as updateWorkspaceHelper,
+  type ReadRecentConversationsOptions,
+  type ReadRecentConversationsResult,
 } from './workspaces.ts'
 import {
   cleanupTaskWorktree as cleanupWorktreeHelper,
@@ -577,11 +580,54 @@ export class BoardService {
     })
   }
 
-  listRecentConversations(options: { projectId?: string; workspacePath?: string; limit?: number } = {}): {
-    available: boolean
-    conversations: DiscoveredConversation[]
-  } {
+  listRecentConversations(options: ReadRecentConversationsOptions = {}): ReadRecentConversationsResult {
     return readRecentConversations(this.paths, options)
+  }
+
+  async queryConversations(
+    options: ReadRecentConversationsOptions & { includeLive?: boolean } = {},
+  ): Promise<ReadRecentConversationsResult> {
+    const local = readRecentConversations(this.paths, options)
+    if ((!options.includeLive && local.available) || typeof this.agentBridge.listConversations !== 'function') {
+      return local
+    }
+    try {
+      const limit = Math.min(Math.max(Math.floor(options.limit ?? 200), 1), 5000)
+      const offset = Math.max(Math.floor(options.offset ?? 0), 0)
+      const live = await fetchPaginatedConversationsFromBridge(this.agentBridge, {
+        projectId: options.projectId,
+        workspacePath: options.workspacePath,
+        query: options.query,
+        limit: limit + offset,
+        offset: 0,
+      })
+      if (live.conversations.length === 0) return local
+
+      // When merging local + live pages, combine un-offset slices then apply offset/limit cleanly.
+      const localFull =
+        offset > 0
+          ? readRecentConversations(this.paths, { ...options, offset: 0, limit: limit + offset })
+          : local
+      const mergedById = new Map<string, DiscoveredConversation>()
+      for (const conv of localFull.conversations) {
+        mergedById.set(conv.conversationId, conv)
+      }
+      for (const conv of live.conversations) {
+        if (!mergedById.has(conv.conversationId)) {
+          mergedById.set(conv.conversationId, conv)
+        }
+      }
+      const sorted = [...mergedById.values()].sort((a, b) => b.lastModifiedAt - a.lastModifiedAt)
+      const sliced = sorted.slice(offset, offset + limit)
+      const hasMore = sorted.length > offset + limit || localFull.hasMore || live.hasMore
+      return {
+        available: local.available || live.conversations.length > 0,
+        conversations: sliced,
+        hasMore,
+      }
+    } catch {
+      return local
+    }
   }
 
   getSnapshot(options: { includeArchived?: boolean; activeWorkspacePaths?: string[] } = {}): BoardSnapshot {
@@ -593,8 +639,23 @@ export class BoardService {
       activeMatch = matchWorkspaceForPath(ap, workspaces)
       if (activeMatch) break
     }
-    const convDiscovery = readRecentConversations(this.paths, { limit: 150 })
+    const convDiscovery = readRecentConversations(this.paths, { limit: 200 })
     const convById = new Map(convDiscovery.conversations.map((c) => [c.conversationId, c]))
+    const snapshotConversations = [...convDiscovery.conversations]
+    if (activeWorkspacePaths.length > 0 || activeMatch) {
+      const wsConvDiscovery = readRecentConversations(this.paths, {
+        projectId: activeMatch?.antigravityProjectId ?? activeMatch?.id,
+        workspacePath: activeWorkspacePaths[0],
+        limit: 100,
+      })
+      for (const c of wsConvDiscovery.conversations) {
+        if (!convById.has(c.conversationId)) {
+          convById.set(c.conversationId, c)
+          snapshotConversations.push(c)
+        }
+      }
+      snapshotConversations.sort((a, b) => b.lastModifiedAt - a.lastModifiedAt)
+    }
 
     const rawTasks = this.db.listTasks({ includeArchived: options.includeArchived ?? true })
     const missingConvIds = new Set<string>()
@@ -660,7 +721,7 @@ export class BoardService {
       activeWorkspacePaths,
       activeProjectId: activeMatch?.antigravityProjectId ?? activeMatch?.id,
       tasks,
-      recentConversations: convDiscovery.conversations,
+      recentConversations: snapshotConversations,
       counts,
     }
   }

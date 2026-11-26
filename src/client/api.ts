@@ -3,6 +3,7 @@ import type {
   BoardFocusRequest,
   BoardSnapshot,
   ConversationRole,
+  DiscoveredConversation,
   ScheduleAction,
   ScheduleMisfirePolicy,
   ScheduleMode,
@@ -191,6 +192,26 @@ const realBoardApi = {
   },
   getTaskDetail(taskId: string): Promise<TaskDetailResponse> {
     return requestJson(`/api/tasks/get?taskId=${encodeURIComponent(taskId)}`)
+  },
+  listConversations(
+    options: {
+      projectId?: string
+      workspacePath?: string
+      query?: string
+      limit?: number
+      offset?: number
+      includeLive?: boolean
+    } = {},
+  ): Promise<{ available: boolean; conversations: DiscoveredConversation[]; hasMore?: boolean }> {
+    const params = new URLSearchParams()
+    if (options.projectId) params.set('projectId', options.projectId)
+    if (options.workspacePath) params.set('workspacePath', options.workspacePath)
+    if (options.query) params.set('query', options.query)
+    if (options.limit !== undefined) params.set('limit', String(options.limit))
+    if (options.offset !== undefined) params.set('offset', String(options.offset))
+    if (options.includeLive !== undefined) params.set('includeLive', String(options.includeLive))
+    const qs = params.toString()
+    return requestJson(`/api/conversations${qs ? `?${qs}` : ''}`)
   },
   registerWorkspace(input: { name?: string; rootPath: string; pinned?: boolean }): Promise<{ workspace: WorkspaceRecord }> {
     return requestJson('/api/workspaces/register', {
