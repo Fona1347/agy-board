@@ -440,5 +440,24 @@ describe('Antigravity 2.35+ conversation governance', () => {
     expect(liveRes.archivedIds).not.toContain('conv-shared-open')
     expect(liveRes.failedIds).toEqual(['conv-life-2'])
     expect(liveRes.errors).toHaveLength(1)
+
+    // 7. Protected origin & reference conversations stay excluded even if present in settled task_executions
+    archivedCalls.length = 0
+    const protectedExecTask = service.createTask({ title: 'Origin/Reference with settled executions' })
+    service.linkConversation(protectedExecTask.id, { conversationId: 'conv-origin-exec', role: 'origin' })
+    service.linkConversation(protectedExecTask.id, { conversationId: 'conv-ref-exec', role: 'reference' })
+    await service.dispatchTask(protectedExecTask.id, { mode: 'resume', conversationId: 'conv-origin-exec' })
+    service.settleExecution(protectedExecTask.id, 'succeeded')
+    await service.dispatchTask(protectedExecTask.id, { mode: 'resume', conversationId: 'conv-ref-exec' })
+    service.settleExecution(protectedExecTask.id, 'succeeded')
+
+    service.transitionPhase(protectedExecTask.id, 'closed', { subPhase: 'done' })
+    await service.flushConversationGovernance()
+    expect(archivedCalls.map((c) => c.conversationId)).not.toContain('conv-origin-exec')
+    expect(archivedCalls.map((c) => c.conversationId)).not.toContain('conv-ref-exec')
+
+    const protectedCleanup = (await cleanupRoute({})) as { archivedIds: string[] }
+    expect(protectedCleanup.archivedIds).not.toContain('conv-origin-exec')
+    expect(protectedCleanup.archivedIds).not.toContain('conv-ref-exec')
   })
 })

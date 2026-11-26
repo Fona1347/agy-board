@@ -180,4 +180,118 @@ describe('TaskDetailView dual-tab separation (Brief / Human Notes / Agent Contra
     expect(drawer).toHaveTextContent('当轮派发合同快照 (rev #2)')
     expect(drawer).toHaveTextContent('Snapshot human note')
   })
+
+  it('preserves dirty title, brief, human notes, and contract drafts across polling updates and resets when switching tasks', async () => {
+    const taskV1 = buildRunningTaskWithFreeze()
+    taskV1.description = 'Short initial brief.'
+
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/tasks/get')) {
+        return new Response(JSON.stringify({ task: taskV1, events: [] }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const { rerender } = render(
+      <TaskDetailView
+        task={taskV1}
+        locale="zh"
+        workspaces={[]}
+        recentConversations={[]}
+        sessionDefaultPermission="read-only"
+        onClose={() => {}}
+        onTaskUpdated={async () => {}}
+        onToast={() => {}}
+      />,
+    )
+
+    const drawer = screen.getByTestId('task-detail-drawer')
+    const titleInput = within(drawer).getByLabelText('标题') as HTMLInputElement
+    expect(titleInput.value).toBe('Split Brief, Human Notes & Contract')
+    const briefCard = within(drawer).getByTestId('detail-memo-card')
+    fireEvent.click(within(briefCard).getByRole('button', { name: '编辑' }))
+    const briefInput = briefCard.querySelector('textarea') as HTMLTextAreaElement
+    const notesInput = within(drawer).getByTestId('human-notes-input') as HTMLTextAreaElement
+
+    // Dirty brief, human notes, and agent contract; leave title untouched
+    fireEvent.change(briefInput, { target: { value: 'Unsaved brief edit while running' } })
+    fireEvent.change(notesInput, { target: { value: 'Unsaved human alignment override' } })
+
+    fireEvent.click(within(drawer).getByRole('tab', { name: /Agent/ }))
+    const contractCard = within(drawer).getByTestId('agent-contract-card')
+    fireEvent.click(within(contractCard).getByRole('button', { name: '编辑' }))
+    const contractInput = within(contractCard).getByTestId('agent-contract-input') as HTMLTextAreaElement
+    fireEvent.change(contractInput, { target: { value: '## Unsaved Contract Draft' } })
+
+    // Simulate 1.5s polling refresh triggered by board_ref_add / board_subgoal_update
+    const polledTaskV2: TaskRecord = {
+      ...taskV1,
+      title: 'Server Updated Title From Poll',
+      updatedAt: taskV1.updatedAt + 1_500,
+      refs: [
+        {
+          id: 'ref-poll-1',
+          taskId: taskV1.id,
+          kind: 'file',
+          target: 'src/host/board-service.ts',
+          addedBy: 'mcp',
+          createdAt: taskV1.updatedAt + 1_500,
+        },
+      ],
+    }
+
+    rerender(
+      <TaskDetailView
+        task={polledTaskV2}
+        locale="zh"
+        workspaces={[]}
+        recentConversations={[]}
+        sessionDefaultPermission="read-only"
+        onClose={() => {}}
+        onTaskUpdated={async () => {}}
+        onToast={() => {}}
+      />,
+    )
+
+    // Untouched title syncs from server, while dirty contract & human notes are preserved
+    expect((within(drawer).getByLabelText('标题') as HTMLInputElement).value).toBe('Server Updated Title From Poll')
+    expect((within(drawer).getByTestId('agent-contract-input') as HTMLTextAreaElement).value).toBe(
+      '## Unsaved Contract Draft',
+    )
+
+    fireEvent.click(within(drawer).getByRole('tab', { name: /我的视图/ }))
+    expect((within(drawer).getByTestId('human-notes-input') as HTMLTextAreaElement).value).toBe(
+      'Unsaved human alignment override',
+    )
+    expect((within(drawer).getByTestId('detail-memo-card').querySelector('textarea') as HTMLTextAreaElement).value).toBe(
+      'Unsaved brief edit while running',
+    )
+
+    // Switching to another task resets all drafts cleanly
+    const otherTask: TaskRecord = {
+      ...buildRunningTaskWithFreeze(),
+      id: 't-other-task',
+      title: 'Another Task Title',
+      description: 'Another task brief',
+      userNotes: 'Another task notes',
+      prompt: 'Another task contract',
+    }
+
+    rerender(
+      <TaskDetailView
+        task={otherTask}
+        locale="zh"
+        workspaces={[]}
+        recentConversations={[]}
+        sessionDefaultPermission="read-only"
+        onClose={() => {}}
+        onTaskUpdated={async () => {}}
+        onToast={() => {}}
+      />,
+    )
+
+    expect((within(drawer).getByLabelText('标题') as HTMLInputElement).value).toBe('Another Task Title')
+    expect((within(drawer).getByTestId('human-notes-input') as HTMLTextAreaElement).value).toBe('Another task notes')
+  })
 })

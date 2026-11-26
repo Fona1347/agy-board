@@ -1123,6 +1123,7 @@ export function createDemoSandboxController(options: DemoSandboxOptions = {}): D
         id: taskId,
         title: input.title,
         description: input.description ?? '',
+        userNotes: input.userNotes ?? '',
         prompt: input.prompt ?? '',
         phase,
         subPhase,
@@ -1169,6 +1170,8 @@ export function createDemoSandboxController(options: DemoSandboxOptions = {}): D
         const next: ClientTaskRecord = { ...cur, updatedAt: now }
         if (typeof patch.title === 'string') next.title = patch.title
         if (typeof patch.description === 'string') next.description = patch.description
+        if (typeof patch.userNotes === 'string') next.userNotes = patch.userNotes
+        else if (patch.userNotes === null) next.userNotes = ''
         if (typeof patch.prompt === 'string') next.prompt = patch.prompt
         if (patch.priority !== undefined) next.priority = patch.priority as TaskPriority
         if (patch.nextAction !== undefined) next.nextAction = patch.nextAction ? String(patch.nextAction) : undefined

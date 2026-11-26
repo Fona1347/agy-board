@@ -183,6 +183,7 @@ const realBoardApi = {
   createTask(input: {
     title: string
     description?: string
+    userNotes?: string
     prompt?: string
     phase?: TaskPhase
     subPhase?: TaskSubPhase

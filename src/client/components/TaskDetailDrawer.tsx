@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -387,6 +387,13 @@ export function TaskDetailView({
   const [busy, setBusy] = useState(false)
   const [activeTab, setActiveTab] = useState<'human' | 'agent'>('human')
   const [showFullNotes, setShowFullNotes] = useState(false)
+  const syncedDraftsRef = useRef({
+    taskId: initialTask.id,
+    title: initialTask.title,
+    description: initialTask.description,
+    userNotes: initialTask.userNotes ?? '',
+    prompt: initialTask.prompt,
+  })
 
   // Reset transient drafts cleanly when switching tasks (in addition to key={task.id})
   useEffect(() => {
@@ -417,10 +424,30 @@ export function TaskDetailView({
     const ct = initialTask as ClientTaskRecord
     setTask(ct)
     if (ct.comments) setComments(ct.comments)
-    setTitleDraft(initialTask.title)
-    setDescDraft(initialTask.description)
-    setUserNotesDraft(initialTask.userNotes ?? '')
-    setPromptDraft(initialTask.prompt)
+
+    const nextSynced = {
+      taskId: initialTask.id,
+      title: initialTask.title,
+      description: initialTask.description,
+      userNotes: initialTask.userNotes ?? '',
+      prompt: initialTask.prompt,
+    }
+    const prevSynced = syncedDraftsRef.current
+    const switchedTask = prevSynced.taskId !== nextSynced.taskId
+    syncedDraftsRef.current = nextSynced
+
+    if (switchedTask) {
+      setTitleDraft(nextSynced.title)
+      setDescDraft(nextSynced.description)
+      setUserNotesDraft(nextSynced.userNotes)
+      setPromptDraft(nextSynced.prompt)
+    } else {
+      setTitleDraft((cur) => (cur === prevSynced.title ? nextSynced.title : cur))
+      setDescDraft((cur) => (cur === prevSynced.description ? nextSynced.description : cur))
+      setUserNotesDraft((cur) => (cur === prevSynced.userNotes ? nextSynced.userNotes : cur))
+      setPromptDraft((cur) => (cur === prevSynced.prompt ? nextSynced.prompt : cur))
+    }
+
     setNextActionDraft(initialTask.nextAction ?? '')
     setDueAtDraft(epochToDateTimeLocal(initialTask.dueAt))
     setPriorityDraft(initialTask.priority)

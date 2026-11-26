@@ -2186,16 +2186,28 @@ export class BoardService {
     tasks: readonly TaskRecord[],
     options?: { excludeTaskIdsFromOpenCheck?: Set<string> },
   ): { candidateIds: string[]; skippedIds: string[] } {
+    const protectedIds = new Set<string>()
+    for (const task of tasks) {
+      for (const link of task.conversations) {
+        if (link.role === 'origin' || link.role === 'reference') {
+          const convId = link.conversationId.trim()
+          if (convId) protectedIds.add(convId)
+        }
+      }
+    }
+
     const rawCandidates = new Set<string>()
     for (const task of tasks) {
       for (const link of task.conversations) {
         if (link.role === 'origin' || link.role === 'reference') continue
         const convId = link.conversationId.trim()
-        if (convId) rawCandidates.add(convId)
+        if (convId && !protectedIds.has(convId)) rawCandidates.add(convId)
       }
       for (const exec of task.executions) {
         const convId = exec.conversationId?.trim()
-        if (convId && exec.endedAt !== undefined) rawCandidates.add(convId)
+        if (convId && exec.endedAt !== undefined && !protectedIds.has(convId)) {
+          rawCandidates.add(convId)
+        }
       }
     }
 
@@ -2209,6 +2221,15 @@ export class BoardService {
         continue
       }
       const linkedTasks = this.db.findTasksByConversationId(convId)
+      const isProtectedRole = linkedTasks.some((t) =>
+        t.conversations.some(
+          (c) => (c.role === 'origin' || c.role === 'reference') && c.conversationId.trim() === convId,
+        ),
+      )
+      if (isProtectedRole) {
+        skippedIds.push(convId)
+        continue
+      }
       const hasOpenExec = linkedTasks.some((t) =>
         t.executions.some((e) => e.endedAt === undefined && e.conversationId === convId),
       )
