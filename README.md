@@ -219,6 +219,22 @@ Additional UX inspiration comes from Linear, Things 3, Raycast, and Claude Cowor
 
 ---
 
+## Changelog
+
+### Unreleased (after `v0.1.0`)
+
+- **3-Layer Task Model & Dispatch Snapshots**: Split Task Brief (`description`), human-exclusive never-locked notes (`userNotes`, injected at highest priority), and Agent Execution Contract (`prompt`) with per-round immutable snapshots instead of blocking freezes.
+- **Interactive MCP App Cards & Precision Board Focus**: Upgraded `ui://agy-board/card.html` (attached to `board_create`, `board_get`, `board_card`, `board_list`) to an editable Kanban-style card with one-click cross-process focus to the right-hand Agy Board drawer.
+- **Antigravity 2.35+ Sidebar Governance**: Added automatic `[Board]` title prefixing, `agy-board` tagging, sidebar grouping, auto-archiving on task close/archive, and one-click cleanup for finished chats.
+- **Review Shortcuts & Unbounded Chat History**: Added `A` / `F` / `S` / `D` keyboard shortcuts (with input/IME guards), one-click Worktree Diff in review banners, and full-history workspace conversation search/pagination.
+- **Theme & Layout Polish**: Derived theme surface/status tokens from host CSS variables and repaired vertical scrolling across drawers, lists, modals, and narrow panes.
+
+### `v0.1.0`
+
+- Initial public release with Focus / Kanban / List views, Dual Write Gate, Zero-Cron schedules, Git worktree isolation, Demo Sandbox, and single-file inline Antigravity Sidecar bundle.
+
+---
+
 ## License
 
 [MIT](LICENSE) · Third-party bundle notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
