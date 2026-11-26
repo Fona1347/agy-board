@@ -67,7 +67,12 @@ import {
   type WorkspaceRecord,
   type WriteGateMode,
 } from '../core/index.ts'
-import { DefaultAgentBridge, type AgentBridge } from './agent-bridge.ts'
+import {
+  DefaultAgentBridge,
+  SAFE_CONVERSATION_ID_RE,
+  type AgentBridge,
+  type UpdateConversationAnnotations,
+} from './agent-bridge.ts'
 import type { BoardDatabase } from './db.ts'
 import { LaunchAdmissionQueue } from './launch-admission.ts'
 import { readHostThemeMode, type HostPaths } from './paths.ts'
@@ -221,6 +226,85 @@ export interface BoardServiceOptions {
   onChanged?: (revision: number) => void
 }
 
+export const BOARD_CONVERSATION_TAG = 'agy-board'
+export const DEFAULT_CONVERSATION_TITLE_PREFIX = '[Board]'
+export const DEFAULT_CONVERSATION_GROUP_ID = 'agy-board'
+const CONVERSATION_GOVERNANCE_META_KEY = 'conversation_governance'
+
+export interface ConversationGovernanceConfig {
+  autoRename: boolean
+  titlePrefix: string
+  autoTag: boolean
+  autoGroup: boolean
+  conversationGroupId: string
+  autoArchiveOnFinish: boolean
+}
+
+export const DEFAULT_CONVERSATION_GOVERNANCE: Readonly<ConversationGovernanceConfig> = {
+  autoRename: true,
+  titlePrefix: DEFAULT_CONVERSATION_TITLE_PREFIX,
+  autoTag: true,
+  autoGroup: true,
+  conversationGroupId: DEFAULT_CONVERSATION_GROUP_ID,
+  autoArchiveOnFinish: true,
+}
+
+export interface ConversationCleanupResult {
+  ok: true
+  available: boolean
+  dryRun: boolean
+  scannedTasks: number
+  candidateCount: number
+  archivedIds: string[]
+  skippedIds: string[]
+  failedIds: string[]
+  errors: Array<{ conversationId: string; error: string }>
+}
+
+export function formatGovernedConversationTitle(
+  taskTitle: string,
+  subgoalTitle?: string,
+  prefix = DEFAULT_CONVERSATION_TITLE_PREFIX,
+): string {
+  const base = subgoalTitle?.trim()
+    ? `${taskTitle.trim()} · ${subgoalTitle.trim()}`
+    : taskTitle.trim()
+  const cleanPrefix = prefix.trim()
+  if (!cleanPrefix) return base
+  if (base.startsWith(cleanPrefix)) return base
+  return `${cleanPrefix} ${base}`
+}
+
+export function buildGovernedConversationTags(task: Pick<TaskRecord, 'tags'>): string[] {
+  const seen = new Set<string>([BOARD_CONVERSATION_TAG])
+  for (const tag of task.tags) {
+    const clean = tag.name.trim()
+    if (clean) seen.add(clean)
+  }
+  return [...seen]
+}
+
+export function buildDispatchGovernanceAnnotations(
+  task: Pick<TaskRecord, 'title' | 'tags'>,
+  subgoal: { title: string } | undefined,
+  config: ConversationGovernanceConfig,
+): UpdateConversationAnnotations {
+  const annotations: UpdateConversationAnnotations = {}
+  if (config.autoRename) {
+    annotations.title = formatGovernedConversationTitle(task.title, subgoal?.title, config.titlePrefix)
+  }
+  if (config.autoTag) {
+    annotations.tags = buildGovernedConversationTags(task)
+  }
+  if (config.autoGroup) {
+    const groupId = config.conversationGroupId.trim()
+    if (groupId) {
+      annotations.conversationGroupId = groupId
+    }
+  }
+  return annotations
+}
+
 export class DomainError extends Error {
   constructor(
     public readonly code: string,
@@ -261,6 +345,7 @@ export class BoardService {
   private maxConcurrentLaunches: number
   private readonly nowFn: () => number
   private readonly onChanged?: (revision: number) => void
+  private readonly pendingGovernance = new Set<Promise<void>>()
 
   constructor(db: BoardDatabase, paths: HostPaths, options: BoardServiceOptions = {}) {
     this.db = db
@@ -1259,7 +1344,11 @@ export class BoardService {
     })
 
     this.syncTaskSpaceProjection(taskId)
-    return this.getTask(taskId)!
+    const updated = this.getTask(taskId)!
+    if (reconciled.phase === 'closed') {
+      this.scheduleArchiveConversationsForTasks([updated])
+    }
+    return updated
   }
 
   reorderPhaseTasks(phase: TaskPhase, orderedTaskIds: string[]): void {
@@ -1284,7 +1373,9 @@ export class BoardService {
       this.notifyRevision()
     })
     this.syncTaskSpaceProjection(taskId)
-    return this.getTask(taskId)!
+    const updated = this.getTask(taskId)!
+    this.scheduleArchiveConversationsForTasks([updated])
+    return updated
   }
 
   restoreTask(taskId: string, source: MutationSource = 'ui'): TaskRecord {
@@ -1550,6 +1641,10 @@ export class BoardService {
       input.action === 'delete'
         ? []
         : affectedIds.map((id) => this.getTask(id)).filter((t): t is TaskRecord => Boolean(t))
+
+    if ((input.action === 'close' || input.action === 'archive') && tasks.length > 0) {
+      this.scheduleArchiveConversationsForTasks(tasks)
+    }
 
     return { action: input.action, affectedIds, skippedIds, tasks }
   }
@@ -2011,6 +2106,199 @@ export class BoardService {
     return this.getTask(taskId)!
   }
 
+  // --- Conversation Governance (Antigravity 2.35+ ConversationService) ---
+  getConversationGovernanceConfig(): ConversationGovernanceConfig {
+    try {
+      const row = this.db.db
+        .prepare('SELECT value FROM board_meta WHERE key = ?')
+        .get(CONVERSATION_GOVERNANCE_META_KEY) as { value?: string } | undefined
+      if (!row?.value) return { ...DEFAULT_CONVERSATION_GOVERNANCE }
+      const parsed = JSON.parse(row.value) as Partial<ConversationGovernanceConfig>
+      return {
+        autoRename:
+          typeof parsed.autoRename === 'boolean' ? parsed.autoRename : DEFAULT_CONVERSATION_GOVERNANCE.autoRename,
+        titlePrefix:
+          typeof parsed.titlePrefix === 'string' && parsed.titlePrefix.trim()
+            ? parsed.titlePrefix.trim().slice(0, 40)
+            : DEFAULT_CONVERSATION_GOVERNANCE.titlePrefix,
+        autoTag: typeof parsed.autoTag === 'boolean' ? parsed.autoTag : DEFAULT_CONVERSATION_GOVERNANCE.autoTag,
+        autoGroup: typeof parsed.autoGroup === 'boolean' ? parsed.autoGroup : DEFAULT_CONVERSATION_GOVERNANCE.autoGroup,
+        conversationGroupId:
+          typeof parsed.conversationGroupId === 'string' && parsed.conversationGroupId.trim()
+            ? parsed.conversationGroupId.trim().slice(0, 64)
+            : DEFAULT_CONVERSATION_GOVERNANCE.conversationGroupId,
+        autoArchiveOnFinish:
+          typeof parsed.autoArchiveOnFinish === 'boolean'
+            ? parsed.autoArchiveOnFinish
+            : DEFAULT_CONVERSATION_GOVERNANCE.autoArchiveOnFinish,
+      }
+    } catch {
+      return { ...DEFAULT_CONVERSATION_GOVERNANCE }
+    }
+  }
+
+  updateConversationGovernanceConfig(patch: Partial<ConversationGovernanceConfig>): ConversationGovernanceConfig {
+    const current = this.getConversationGovernanceConfig()
+    const next: ConversationGovernanceConfig = {
+      autoRename: typeof patch.autoRename === 'boolean' ? patch.autoRename : current.autoRename,
+      titlePrefix:
+        typeof patch.titlePrefix === 'string' && patch.titlePrefix.trim()
+          ? patch.titlePrefix.trim().slice(0, 40)
+          : current.titlePrefix,
+      autoTag: typeof patch.autoTag === 'boolean' ? patch.autoTag : current.autoTag,
+      autoGroup: typeof patch.autoGroup === 'boolean' ? patch.autoGroup : current.autoGroup,
+      conversationGroupId:
+        typeof patch.conversationGroupId === 'string' && patch.conversationGroupId.trim()
+          ? patch.conversationGroupId.trim().slice(0, 64)
+          : current.conversationGroupId,
+      autoArchiveOnFinish:
+        typeof patch.autoArchiveOnFinish === 'boolean'
+          ? patch.autoArchiveOnFinish
+          : current.autoArchiveOnFinish,
+    }
+    this.db.inTransaction(() => {
+      this.db.db
+        .prepare(
+          `INSERT INTO board_meta (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        )
+        .run(CONVERSATION_GOVERNANCE_META_KEY, JSON.stringify(next))
+      this.notifyRevision()
+    })
+    return next
+  }
+
+  private collectArchivableConversationIds(
+    tasks: readonly TaskRecord[],
+    options?: { excludeTaskIdsFromOpenCheck?: Set<string> },
+  ): { candidateIds: string[]; skippedIds: string[] } {
+    const rawCandidates = new Set<string>()
+    for (const task of tasks) {
+      for (const link of task.conversations) {
+        if (link.role === 'origin' || link.role === 'reference') continue
+        const convId = link.conversationId.trim()
+        if (convId) rawCandidates.add(convId)
+      }
+      for (const exec of task.executions) {
+        const convId = exec.conversationId?.trim()
+        if (convId && exec.endedAt !== undefined) rawCandidates.add(convId)
+      }
+    }
+
+    const excludeIds = options?.excludeTaskIdsFromOpenCheck
+    const candidateIds: string[] = []
+    const skippedIds: string[] = []
+
+    for (const convId of rawCandidates) {
+      if (!SAFE_CONVERSATION_ID_RE.test(convId)) {
+        skippedIds.push(convId)
+        continue
+      }
+      const linkedTasks = this.db.findTasksByConversationId(convId)
+      const hasOpenExec = linkedTasks.some((t) =>
+        t.executions.some((e) => e.endedAt === undefined && e.conversationId === convId),
+      )
+      if (hasOpenExec) {
+        skippedIds.push(convId)
+        continue
+      }
+      const hasOtherOpenTask = linkedTasks.some(
+        (t) => !(excludeIds?.has(t.id) ?? false) && t.archivedAt === undefined && t.phase !== 'closed',
+      )
+      if (hasOtherOpenTask) {
+        skippedIds.push(convId)
+        continue
+      }
+      candidateIds.push(convId)
+    }
+
+    return { candidateIds, skippedIds }
+  }
+
+  private scheduleArchiveConversationsForTasks(
+    tasks: readonly TaskRecord[],
+    options?: { excludeTaskIdsFromOpenCheck?: Set<string> },
+  ): void {
+    if (tasks.length === 0 || typeof this.agentBridge.updateConversation !== 'function') return
+    const config = this.getConversationGovernanceConfig()
+    if (!config.autoArchiveOnFinish) return
+    const { candidateIds } = this.collectArchivableConversationIds(tasks, options)
+    if (candidateIds.length === 0) return
+
+    const updateConv = this.agentBridge.updateConversation.bind(this.agentBridge)
+    const job = (async () => {
+      for (const convId of candidateIds) {
+        try {
+          await updateConv(convId, { archived: true })
+        } catch {
+          // Fault-tolerant degradation: never block or crash primary board flow
+        }
+      }
+    })()
+    this.pendingGovernance.add(job)
+    void job.finally(() => {
+      this.pendingGovernance.delete(job)
+    })
+  }
+
+  async flushConversationGovernance(): Promise<void> {
+    while (this.pendingGovernance.size > 0) {
+      await Promise.allSettled([...this.pendingGovernance])
+    }
+  }
+
+  async cleanupFinishedConversations(
+    options: { workspaceId?: string; dryRun?: boolean } = {},
+  ): Promise<ConversationCleanupResult> {
+    const allTasks = this.db.listTasks({ includeArchived: true })
+    const finishedTasks = allTasks.filter(
+      (t) =>
+        (t.phase === 'closed' || t.archivedAt !== undefined) &&
+        (!options.workspaceId || t.workspaceId === options.workspaceId),
+    )
+    const { candidateIds, skippedIds } = this.collectArchivableConversationIds(finishedTasks)
+    const available = typeof this.agentBridge.updateConversation === 'function'
+    const dryRun = Boolean(options.dryRun)
+    if (dryRun || !available || candidateIds.length === 0) {
+      return {
+        ok: true,
+        available,
+        dryRun,
+        scannedTasks: finishedTasks.length,
+        candidateCount: candidateIds.length,
+        archivedIds: [],
+        skippedIds,
+        failedIds: [],
+        errors: [],
+      }
+    }
+
+    const archivedIds: string[] = []
+    const failedIds: string[] = []
+    const errors: Array<{ conversationId: string; error: string }> = []
+    for (const convId of candidateIds) {
+      try {
+        await this.agentBridge.updateConversation!(convId, { archived: true })
+        archivedIds.push(convId)
+      } catch (err) {
+        failedIds.push(convId)
+        errors.push({ conversationId: convId, error: err instanceof Error ? err.message : String(err) })
+      }
+    }
+
+    return {
+      ok: true,
+      available,
+      dryRun,
+      scannedTasks: finishedTasks.length,
+      candidateCount: candidateIds.length,
+      archivedIds,
+      skippedIds,
+      failedIds,
+      errors,
+    }
+  }
+
   // --- Dispatch / Resume / Rework ---
   async dispatchTask(
     taskId: string,
@@ -2249,20 +2537,31 @@ export class BoardService {
         groupId: runGroupId,
         start: async () => {
           try {
+            const governanceConfig = this.getConversationGovernanceConfig()
+            const baseTitle = subgoal ? `${task.title} · ${subgoal.title}` : task.title
+            const launchTitle = governanceConfig.autoRename
+              ? formatGovernedConversationTitle(task.title, subgoal?.title, governanceConfig.titlePrefix)
+              : baseTitle
+            const launchTags = governanceConfig.autoTag
+              ? buildGovernedConversationTags(task)
+              : task.tags.length > 0
+                ? task.tags.map((t) => t.name)
+                : undefined
+
             const launchResult =
               action === 'new'
                 ? await this.agentBridge.startConversation({
                     prompt: promptText,
-                    title: subgoal ? `${task.title} · ${subgoal.title}` : task.title,
+                    title: launchTitle,
                     model: options.model ?? task.model,
                     profile: options.profile ?? task.handover?.mode ?? task.mode,
                     projectId,
-                    tags: task.tags.length > 0 ? task.tags.map((t) => t.name) : undefined,
+                    tags: launchTags,
                   })
                 : await this.agentBridge.sendMessage({
                     conversationId: targetConvId!,
                     message: promptText,
-                    title: subgoal ? `${task.title} · ${subgoal.title}` : task.title,
+                    title: baseTitle,
                     projectId,
                   })
 
@@ -2287,6 +2586,21 @@ export class BoardService {
               this.notifyRevision()
             })
             this.syncTaskSpaceProjection(taskId)
+
+            if (
+              action === 'new' &&
+              typeof this.agentBridge.updateConversation === 'function' &&
+              SAFE_CONVERSATION_ID_RE.test(convId)
+            ) {
+              const annotations = buildDispatchGovernanceAnnotations(task, subgoal, governanceConfig)
+              if (Object.keys(annotations).length > 0) {
+                try {
+                  await this.agentBridge.updateConversation(convId, annotations)
+                } catch {
+                  // Fault-tolerant degradation: never block dispatch if LS < 2.35 or unreachable
+                }
+              }
+            }
 
             resolve({ task: this.getTask(taskId)!, executionId, conversationId: convId, action })
           } catch (err) {
@@ -2621,7 +2935,14 @@ export class BoardService {
       this.notifyRevision()
     })
     this.syncTaskSpaceProjection(taskId)
-    return this.getTask(taskId)!
+    const updated = this.getTask(taskId)!
+    const reusesAcrossCycles = sched.sessionMode === 'auto' && task.reuseSession
+    if (!reusesAcrossCycles) {
+      this.scheduleArchiveConversationsForTasks([updated], {
+        excludeTaskIdsFromOpenCheck: new Set([taskId]),
+      })
+    }
+    return updated
   }
 
   async handleMissedSchedule(

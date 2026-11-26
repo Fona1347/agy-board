@@ -30,6 +30,8 @@ import {
 import type {
   BoardApiSandbox,
   ClientTaskRecord,
+  ConversationCleanupResult,
+  ConversationGovernanceConfig,
   ScheduleMutationPatch,
   TaskCommentRecord,
   TaskDetailResponse,
@@ -1017,6 +1019,15 @@ export function createDemoSandboxController(options: DemoSandboxOptions = {}): D
     options.onMutate?.(action)
   }
 
+  let governanceConfig: ConversationGovernanceConfig = {
+    autoRename: true,
+    titlePrefix: '[Board]',
+    autoTag: true,
+    autoGroup: true,
+    conversationGroupId: 'agy-board',
+    autoArchiveOnFinish: true,
+  }
+
   const api: BoardApiSandbox = {
     async getSnapshot() {
       return cloneSnapshot()
@@ -1937,6 +1948,72 @@ export function createDemoSandboxController(options: DemoSandboxOptions = {}): D
             : `Demo Sandbox: simulated ${opts?.split ? 'split ' : ''}jump to ${shortId} (no real session opened)`,
       }
     },
+
+    async getConversationGovernance() {
+      return { ok: true as const, config: { ...governanceConfig } }
+    },
+
+    async updateConversationGovernance(patch) {
+      governanceConfig = {
+        ...governanceConfig,
+        ...(typeof patch.autoRename === 'boolean' ? { autoRename: patch.autoRename } : {}),
+        ...(typeof patch.titlePrefix === 'string' && patch.titlePrefix.trim()
+          ? { titlePrefix: patch.titlePrefix.trim().slice(0, 40) }
+          : {}),
+        ...(typeof patch.autoTag === 'boolean' ? { autoTag: patch.autoTag } : {}),
+        ...(typeof patch.autoGroup === 'boolean' ? { autoGroup: patch.autoGroup } : {}),
+        ...(typeof patch.conversationGroupId === 'string' && patch.conversationGroupId.trim()
+          ? { conversationGroupId: patch.conversationGroupId.trim().slice(0, 64) }
+          : {}),
+        ...(typeof patch.autoArchiveOnFinish === 'boolean'
+          ? { autoArchiveOnFinish: patch.autoArchiveOnFinish }
+          : {}),
+      }
+      notify('conversation.governance')
+      return { ok: true as const, config: { ...governanceConfig }, revision: state.snapshot.revision }
+    },
+
+    async cleanupFinishedConversations(opts = {}): Promise<ConversationCleanupResult> {
+      const finished = state.snapshot.tasks.filter(
+        (t) =>
+          (t.phase === 'closed' || t.archivedAt !== undefined) &&
+          (!opts.workspaceId || t.workspaceId === opts.workspaceId),
+      )
+      const openConvIds = new Set<string>()
+      for (const t of state.snapshot.tasks) {
+        if (t.archivedAt === undefined && t.phase !== 'closed') {
+          for (const c of t.conversations) openConvIds.add(c.conversationId)
+        }
+      }
+      const candidates = new Set<string>()
+      const skipped = new Set<string>()
+      for (const t of finished) {
+        for (const c of t.conversations) {
+          if (c.role === 'origin' || c.role === 'reference') continue
+          if (openConvIds.has(c.conversationId)) skipped.add(c.conversationId)
+          else candidates.add(c.conversationId)
+        }
+        for (const ex of t.executions) {
+          if (!ex.conversationId || ex.endedAt === undefined) continue
+          if (openConvIds.has(ex.conversationId)) skipped.add(ex.conversationId)
+          else candidates.add(ex.conversationId)
+        }
+      }
+      const archivedIds = opts.dryRun ? [] : [...candidates]
+      if (!opts.dryRun) notify('conversation.cleanup_finished')
+      return {
+        ok: true,
+        available: true,
+        dryRun: Boolean(opts.dryRun),
+        scannedTasks: finished.length,
+        candidateCount: candidates.size,
+        archivedIds,
+        skippedIds: [...skipped],
+        failedIds: [],
+        errors: [],
+        revision: state.snapshot.revision,
+      }
+    },
   }
 
   return {
@@ -1945,6 +2022,14 @@ export function createDemoSandboxController(options: DemoSandboxOptions = {}): D
     reset: (now = Date.now(), nextLocale = locale) => {
       locale = nextLocale
       state = buildInitialData(now, locale)
+      governanceConfig = {
+        autoRename: true,
+        titlePrefix: '[Board]',
+        autoTag: true,
+        autoGroup: true,
+        conversationGroupId: 'agy-board',
+        autoArchiveOnFinish: true,
+      }
       return cloneSnapshot()
     },
   }
